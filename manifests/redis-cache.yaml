@@ -1,0 +1,82 @@
+---
+# Redis Cache Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbox-redis-cache
+  namespace: netbox
+  labels:
+    app: netbox-redis-cache
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: redis
+  selector:
+    app: netbox-redis-cache
+
+---
+# Redis Cache Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbox-redis-cache
+  namespace: netbox
+  labels:
+    app: netbox-redis-cache
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: netbox-redis-cache
+  template:
+    metadata:
+      labels:
+        app: netbox-redis-cache
+    spec:
+      containers:
+        - name: redis-cache
+          image: valkey/valkey:9.0-alpine
+          command:
+            - sh
+            - -c
+            - valkey-server --requirepass ${REDIS_CACHE_PASSWORD}
+          env:
+            - name: REDIS_CACHE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: netbox-env
+                  key: REDIS_CACHE_PASSWORD
+          ports:
+            - containerPort: 6379
+              name: redis
+          volumeMounts:
+            - name: redis-cache-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: redis-cache-data
+          persistentVolumeClaim:
+            claimName: netbox-redis-cache-pvc
+
+---
+# Redis Cache PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbox-redis-cache-pvc
+  namespace: netbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

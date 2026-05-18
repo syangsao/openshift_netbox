@@ -1,0 +1,85 @@
+---
+# Redis (Session Store) Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbox-redis
+  namespace: netbox
+  labels:
+    app: netbox-redis
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: redis
+  selector:
+    app: netbox-redis
+
+---
+# Redis (Session Store) Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbox-redis
+  namespace: netbox
+  labels:
+    app: netbox-redis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: netbox-redis
+  template:
+    metadata:
+      labels:
+        app: netbox-redis
+    spec:
+      containers:
+        - name: redis
+          image: valkey/valkey:9.0-alpine
+          command:
+            - sh
+            - -c
+            - valkey-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+          envFrom:
+            - secretRef:
+                name: netbox-env
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: netbox-env
+                  key: REDIS_PASSWORD
+          ports:
+            - containerPort: 6379
+              name: redis
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: netbox-redis-pvc
+
+---
+# Redis (Session Store) PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbox-redis-pvc
+  namespace: netbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

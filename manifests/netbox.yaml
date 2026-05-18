@@ -1,0 +1,164 @@
+---
+# NetBox Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbox
+  namespace: netbox
+  labels:
+    app: netbox
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app: netbox
+
+---
+# NetBox Deployment (App + Worker sidecar)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbox
+  namespace: netbox
+  labels:
+    app: netbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netbox
+  template:
+    metadata:
+      labels:
+        app: netbox
+    spec:
+      containers:
+        # ===================================================================
+        # NetBox App (Granian ASGI server)
+        # ===================================================================
+        - name: netbox
+          # CHANGE: Replace with your actual Quay image path and tag
+          image: quay.io/YOUR_ORG/netbox:v4.3.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - secretRef:
+                name: netbox-env
+          volumeMounts:
+            - name: config
+              mountPath: /etc/netbox/config
+              readOnly: true
+            - name: media
+              mountPath: /opt/netbox/netbox/media
+            - name: reports
+              mountPath: /opt/netbox/netbox/reports
+            - name: scripts
+              mountPath: /opt/netbox/netbox/scripts
+          readinessProbe:
+            httpGet:
+              path: /login/
+              port: 8080
+            initialDelaySeconds: 90
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /login/
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+
+        # ===================================================================
+        # NetBox Worker (RQ task queue - sidecar)
+        # ===================================================================
+        - name: netbox-worker
+          # CHANGE: Replace with your actual Quay image path and tag
+          image: quay.io/YOUR_ORG/netbox:v4.3.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: netbox-env
+          command:
+            - /opt/netbox/venv/bin/python
+            - /opt/netbox/netbox/manage.py
+            - rqworker
+          volumeMounts:
+            - name: config
+              mountPath: /etc/netbox/config
+              readOnly: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+
+      volumes:
+        - name: config
+          configMap:
+            name: netbox-config
+        - name: media
+          persistentVolumeClaim:
+            claimName: netbox-media-pvc
+        - name: reports
+          persistentVolumeClaim:
+            claimName: netbox-reports-pvc
+        - name: scripts
+          persistentVolumeClaim:
+            claimName: netbox-scripts-pvc
+
+---
+# NetBox Media PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbox-media-pvc
+  namespace: netbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# NetBox Reports PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbox-reports-pvc
+  namespace: netbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# NetBox Scripts PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbox-scripts-pvc
+  namespace: netbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

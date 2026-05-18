@@ -1,0 +1,19 @@
+---
+# NetBox OpenShift Route (TLS edge termination)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: netbox
+  namespace: netbox
+  labels:
+    app: netbox
+spec:
+  to:
+    kind: Service
+    name: netbox
+    weight: 100
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
