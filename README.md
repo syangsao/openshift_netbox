@@ -58,7 +58,7 @@ podman build \
   --target main \
   -f Dockerfile \
   -t "quay.io/${QUAY_ORG}/netbox:${NETBOX_VERSION}" \
-  --build-arg "FROM=quay.io/ubuntu:24.04" \
+  --build-arg "FROM=docker.io/ubuntu:24.04" \
   --build-arg "NETBOX_PATH=.netbox" \
   .
 ```
@@ -87,7 +87,7 @@ Or use the convenience script:
 |---|---|---|
 | `NETBOX_VERSION` | (required) | Git tag or branch of NetBox source |
 | `QUAY_ORG` | (required) | Your Quay.io organization |
-| `FROM` | `quay.io/ubuntu:24.04` | Base image |
+| `FROM` | `docker.io/ubuntu:24.04` | Base image |
 
 ---
 
