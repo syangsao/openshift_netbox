@@ -35,7 +35,7 @@ podman build \
   --target main \
   -f Dockerfile \
   -t "${IMAGE}" \
-  --build-arg "FROM=quay.io/ubuntu:24.04" \
+  --build-arg "FROM=docker.io/ubuntu:24.04" \
   --build-arg "NETBOX_PATH=.netbox" \
   --label "org.opencontainers.image.version=${NETBOX_VERSION}" \
   --label "org.opencontainers.image.created=$(date -u '+%Y-%m-%dT%H:%M:%S+00:00')" \
