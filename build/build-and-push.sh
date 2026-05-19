@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build and push NetBox container image to Quay.io using Podman
 # Usage: ./build-and-push.sh <version> [quay_org]
-# Example: ./build-and-push.sh v4.3.0 my-quay-org
+# Example: ./build-and-push.sh 4.3.0 my-quay-org
 #
 # Prerequisites:
 #   - podman installed (podman build/push)
