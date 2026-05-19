@@ -40,7 +40,7 @@ spec:
         # ===================================================================
         - name: netbox
           # CHANGE: Replace with your actual Quay image path and tag
-          image: quay.io/YOUR_ORG/netbox:v4.3.0
+          image: quay.io/YOUR_ORG/netbox:4.3.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -86,7 +86,7 @@ spec:
         # ===================================================================
         - name: netbox-worker
           # CHANGE: Replace with your actual Quay image path and tag
-          image: quay.io/YOUR_ORG/netbox:v4.3.0
+          image: quay.io/YOUR_ORG/netbox:4.3.0
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:

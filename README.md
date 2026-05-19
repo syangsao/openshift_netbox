@@ -39,8 +39,8 @@ cd netbox-docker
 ### Set build variables
 
 ```bash
-# Choose the NetBox version tag (e.g., v4.3.0, v4.2.0, v4.1.0)
-export NETBOX_VERSION=v4.3.0
+# Choose the NetBox version tag (no "v" prefix — e.g., 4.3.0, 4.2.0, 4.1.0)
+export NETBOX_VERSION=4.3.0
 
 # Your Quay.io organization/repository
 export QUAY_ORG=your-quay-org
@@ -151,7 +151,7 @@ oc wait --for=condition=ready pod -l app=netbox-redis-cache -n netbox --timeout=
 
 ### 3d. NetBox App + Worker
 
-Edit `manifests/netbox.yaml` and replace `quay.io/YOUR_ORG/netbox:v4.3.0` with your actual image path.
+Edit `manifests/netbox.yaml` and replace `quay.io/YOUR_ORG/netbox:4.3.0` with your actual image path.
 
 ```bash
 oc apply -f manifests/netbox.yaml
