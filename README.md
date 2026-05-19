@@ -20,10 +20,10 @@ NetBox Service (port 8080)
 
 ## Prerequisites
 
-- **Docker** with Buildx enabled
+- **Podman** installed (`podman build`/`podman push`)
 - **Quay.io** account with a repository
 - **OpenShift** cluster access (`oc` CLI configured)
-- **Docker login** to Quay: `docker login quay.io`
+- **Podman login** to Quay: `podman login quay.io`
 
 ---
 
@@ -49,36 +49,45 @@ export QUAY_ORG=your-quay-org
 ### Build locally (dry run)
 
 ```bash
-IMAGE_NAMES="quay.io/${QUAY_ORG}/netbox" \
-  DOCKER_FROM=docker.io/ubuntu:24.04 \
-  ./build.sh ${NETBOX_VERSION}
+# Checkout the tag and build
+git fetch --tags
+git checkout ${NETBOX_VERSION}
+
+podman build \
+  --pull \
+  --target main \
+  -f Dockerfile \
+  -t "quay.io/${QUAY_ORG}/netbox:${NETBOX_VERSION}" \
+  --build-arg "FROM=quay.io/ubuntu:24.04" \
+  --build-arg "NETBOX_PATH=.netbox" \
+  .
 ```
 
 This clones the NetBox source at the specified version, builds the image, and tags it. Verify it works:
 
 ```bash
-docker run --rm quay.io/${QUAY_ORG}/netbox:${NETBOX_VERSION} --help
+podman run --rm quay.io/${QUAY_ORG}/netbox:${NETBOX_VERSION} --help
 ```
 
 ### Push to Quay
 
 ```bash
-IMAGE_NAMES="quay.io/${QUAY_ORG}/netbox" \
-  DOCKER_FROM=docker.io/ubuntu:24.04 \
-  ./build.sh ${NETBOX_VERSION} --push
+podman push quay.io/${QUAY_ORG}/netbox:${NETBOX_VERSION}
 ```
 
-The `--push` flag switches the output mode from `type=docker` to `type=image --push`, sending the image directly to Quay.
+Or use the convenience script:
+
+```bash
+./build/build-and-push.sh ${NETBOX_VERSION} ${QUAY_ORG}
+```
 
 ### Build Variables Reference
 
 | Variable | Default | Description |
 |---|---|---|
 | `NETBOX_VERSION` | (required) | Git tag or branch of NetBox source |
-| `IMAGE_NAMES` | `docker.io/netboxcommunity/netbox` | Target registry image name(s) |
-| `DOCKER_FROM` | `ubuntu:26.04` | Base image (use `ubuntu:24.04` for OpenShift 4) |
-| `BUILDX_PLATFORM` | `linux/amd64` | Target platform(s) |
-| `BUILDX_BUILDER_NAME` | `(auto)` | Buildx builder name |
+| `QUAY_ORG` | (required) | Your Quay.io organization |
+| `FROM` | `quay.io/ubuntu:24.04` | Base image |
 
 ---
 
