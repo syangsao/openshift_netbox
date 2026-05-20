@@ -71,7 +71,7 @@ git clone --depth 1 --branch "v${NETBOX_VERSION}" \
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
-  -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
+  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
 # 4. Fix dependency conflicts (required for NetBox 3.4.x builds)
@@ -308,7 +308,7 @@ git clone --depth 1 https://github.com/netbox-community/netbox.git .netbox
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
-  -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
+  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
 # 3. Fix sentry-sdk version conflict (required for NetBox 3.4.x builds)
