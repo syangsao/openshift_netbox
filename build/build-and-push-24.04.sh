@@ -71,15 +71,22 @@ sed -i \
   -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
-# Fix sentry-sdk version conflict
-# NetBox source pins sentry-sdk==1.11.1 but netbox-docker requires sentry-sdk[django]>=2.x
-# Remove the hard pin from the NetBox source requirements so netbox-docker's version takes precedence
-echo "🔨 Fixing sentry-sdk version conflict in .netbox/requirements.txt..."
+# Fix dependency conflicts between netbox-docker and NetBox source
+echo "🔨 Fixing dependency conflicts in requirements files..."
+
+# Fix sentry-sdk: NetBox source pins sentry-sdk==1.11.1 but netbox-docker
+# requires sentry-sdk[django]>=2.x. Remove the hard pin from NetBox source.
 if grep -q "^sentry-sdk==" .netbox/requirements.txt; then
   sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
   echo "   ✅ Removed sentry-sdk hard pin from NetBox source"
-else
-  echo "   ℹ️  No sentry-sdk hard pin found (not needed for this version)"
+fi
+
+# Fix django-auth-ldap: netbox-docker pins django-auth-ldap==5.2.0 which
+# requires django>=4.2, but NetBox 3.4.x source doesn't pin django>=4.2,
+# so uv resolves django==4.1.4 causing a conflict. Downgrade to 4.8.0.
+if grep -q "^django-auth-ldap==5" requirements-container.txt; then
+  sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
+  echo "   ✅ Downgraded django-auth-ldap to 4.8.0 (compatible with django<4.2)"
 fi
 
 # Verify the patches took effect
