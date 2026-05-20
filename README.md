@@ -89,9 +89,10 @@ sed -i '/^jsonschema==/d' .netbox/requirements.txt
 # 9. Fix django-auth-ldap version conflict (required for NetBox 3.4.x builds)
 sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
 
-# 10. Remove --no-binary flags (lxml 4.6.5 Cython code fails with Python 3.12)
+# 10. Remove --no-binary flags + pin lxml for Python 3.12 compatibility
 sed -i '/^--no-binary lxml/d' requirements-container.txt
 sed -i '/^--no-binary xmlsec/d' requirements-container.txt
+echo "lxml>=5.0.0" >> requirements-container.txt
 
 # 11. Verify the patches took effect
 grep libjpeg-dev Dockerfile
