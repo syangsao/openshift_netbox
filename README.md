@@ -62,7 +62,7 @@ podman build \
   --target main \
   -f Dockerfile \
   -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
-  --build-arg "FROM=docker.io/ubuntu:24.04" \
+  --build-arg "FROM=docker.io/ubuntu:22.04" \
   --build-arg "NETBOX_PATH=.netbox" \
   .
 ```
@@ -91,7 +91,7 @@ Or use the convenience script:
 |---|---|---|
 | `REGISTRY` | `quay.io` | Container registry host |
 | `REGISTRY_ORG` | (required) | Your registry organization |
-| `FROM` | `docker.io/ubuntu:24.04` | Base image |
+| `FROM` | `docker.io/ubuntu:22.04` | Base image |
 
 ---
 
