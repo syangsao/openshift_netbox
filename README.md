@@ -91,7 +91,7 @@ sed -i '/^--no-binary xmlsec/d' requirements-container.txt
 grep libjpeg-dev Dockerfile
 # social-auth-core sed in Dockerfile should show: social-auth-core\[[^]]*\]
 
-# 10. Build (--no-cache prevents podman from using stale cached layers)
+# 11. Build (--no-cache prevents podman from using stale cached layers)
 podman build \
   --no-cache \
   --pull \
