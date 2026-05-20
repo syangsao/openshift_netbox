@@ -66,6 +66,13 @@ fi
 # Also fix social-auth-core extras bracket handling (upstream sed creates
 # double brackets when requirements.txt already has extras like [openidconnect])
 echo "🔨 Patching Dockerfile for Ubuntu 24.04 compatibility..."
+
+# Fix sentry-sdk version conflict in requirements-container.txt
+# netbox-docker pins sentry-sdk==1.11.1 but NetBox source requires sentry-sdk>=2.x
+if [ -f "requirements-container.txt" ]; then
+  echo "🔨 Fixing sentry-sdk version conflict..."
+  sed -i "/^sentry-sdk==/d" requirements-container.txt
+fi
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
