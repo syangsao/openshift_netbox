@@ -62,7 +62,7 @@ podman build \
   --target main \
   -f Dockerfile \
   -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
-  --build-arg "FROM=docker.io/ubuntu:22.04" \
+  --build-arg "FROM=docker.io/ubuntu:24.04" \
   --build-arg "NETBOX_PATH=.netbox" \
   .
 ```
@@ -95,7 +95,7 @@ Or use the convenience scripts:
 |---|---|---|
 | `REGISTRY` | `quay.io` | Container registry host |
 | `REGISTRY_ORG` | (required) | Your registry organization |
-| `FROM` | `docker.io/ubuntu:22.04` | Base image |
+| `FROM` | `docker.io/ubuntu:24.04` | Base image |
 
 ---
 
@@ -253,32 +253,36 @@ Common causes: wrong DB password, invalid SECRET_KEY format, or DB not ready.
 The probe checks `/login/` on port 8080 with a 90-second initial delay. If the first startup takes longer (large migrations), increase `initialDelaySeconds` in `manifests/netbox.yaml`.
 
 ### podman build fails with `Unable to locate package libxmlsec1-1`
-The upstream `netbox-docker` Dockerfile uses package names from older Ubuntu releases (`libxmlsec1-1`, `libxmlsec1-openssl1`) that were renamed in Ubuntu 24.04 to `libxmlsec1t64` and `libxmlsec1-openssl`.
+The upstream `netbox-docker` Dockerfile uses `libxmlsec1-1` and `libxmlsec1-openssl1` package names that don't exist on **any** modern Ubuntu version (22.04, 24.04) — they were renamed to `libxmlsec1t64` and `libxmlsec1-openssl` due to the libc6 t64 transition.
 
-**Option 1 — Use the Ubuntu 24.04 build script** (recommended):
+**Option 1 — Use the build scripts** (recommended, handles everything automatically):
 ```bash
-# Pull the latest code first
-git pull origin main
-
-# Use the 24.04 script — it patches the Dockerfile automatically
+# Ubuntu 24.04 base
 ./build/build-and-push-24.04.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
-```
 
-**Option 2 — Patch manually before building**:
+# Ubuntu 22.04 base
+./build/build-and-push.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
+```
+Both scripts auto-patch the Dockerfile and clone the NetBox source code.
+
+**Option 2 — Manual build** (patch the Dockerfile AND clone NetBox source before building):
 ```bash
 cd netbox-docker
 
-# Patch the Dockerfile BEFORE running podman build
+# 1. Clone the NetBox source code (required — Dockerfile needs it)
+git clone --depth 1 https://github.com/netbox-community/netbox.git .netbox
+
+# 2. Patch the Dockerfile (required for ALL Ubuntu versions)
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
   Dockerfile
 
-# Verify the patch took effect
+# 3. Verify the patch took effect
 grep libxmlsec1 Dockerfile
 # Should show: libxmlsec1t64, libxmlsec1-dev, libxmlsec1-openssl
 
-# Build
+# 4. Build
 podman build \
   --pull \
   --target main \
@@ -289,19 +293,7 @@ podman build \
   .
 ```
 
-**Option 3 — Use Ubuntu 22.04 as the base** (no patching needed):
-```bash
-podman build \
-  --pull \
-  --target main \
-  -f Dockerfile \
-  -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
-  --build-arg "FROM=docker.io/ubuntu:22.04" \
-  --build-arg "NETBOX_PATH=.netbox" \
-  .
-```
-
-**Option 4 — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
+**Option 3 — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
 
 ---
 
