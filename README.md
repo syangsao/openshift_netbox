@@ -74,11 +74,16 @@ sed -i \
   -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
-# 4. Fix sentry-sdk version conflict (NetBox source pins old sentry-sdk)
-# NetBox source requirements.txt pins sentry-sdk==1.11.1 but netbox-docker
-# requires sentry-sdk[django]>=2.x. Remove the hard pin so netbox-docker's
-# version takes precedence.
+# 4. Fix dependency conflicts (required for NetBox 3.4.x builds)
+
+# NetBox source pins sentry-sdk==1.11.1 but netbox-docker requires
+# sentry-sdk[django]>=2.x. Remove the hard pin from NetBox source.
 sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
+
+# netbox-docker pins django-auth-ldap==5.2.0 (requires django>=4.2) but
+# NetBox 3.4.x source doesn't pin django>=4.2, so uv resolves django==4.1.4
+# causing a conflict. Downgrade to 4.8.0 (compatible with django>=3.2).
+sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
 
 # Verify the patches took effect
 grep libxmlsec1 Dockerfile
@@ -309,11 +314,14 @@ sed -i \
 # 3. Fix sentry-sdk version conflict (required for NetBox 3.4.x builds)
 sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
 
-# 4. Verify the patches took effect
+# 4. Fix django-auth-ldap version conflict (required for NetBox 3.4.x builds)
+sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
+
+# 5. Verify the patches took effect
 grep libxmlsec1 Dockerfile
 # Should show: libxmlsec1t64, libxmlsec1-dev, libxmlsec1-openssl
 
-# 5. Build
+# 6. Build
 podman build \
   --pull \
   --target main \
@@ -331,12 +339,25 @@ podman build \
 Because you require sentry-sdk==1.11.1 and sentry-sdk[django]==2.39.0,
 we can conclude that your requirements are unsatisfiable.
 ```
-NetBox source `requirements.txt` pins `sentry-sdk==1.11.1` but netbox-docker's
+NetBox source `.netbox/requirements.txt` pins `sentry-sdk==1.11.1` but netbox-docker's
 `requirements-container.txt` requires `sentry-sdk[django]>=2.x`. Fix by removing
 the hard pin from the NetBox source requirements:
 
 ```bash
 sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
+```
+
+### podman build fails with `django-auth-ldap` version conflict
+```
+Because django-auth-ldap==5.2.0 depends on django>=4.2 and you require django==4.1.4,
+we can conclude that your requirements are unsatisfiable.
+```
+netbox-docker's `requirements-container.txt` pins `django-auth-ldap==5.2.0` which
+requires `django>=4.2`, but NetBox 3.4.x source doesn't pin `django>=4.2` so uv
+resolves `django==4.1.4`. Fix by downgrading django-auth-ldap:
+
+```bash
+sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
 ```
 
 ### podman build fails with `social-auth-core[all][openidconnect]`
