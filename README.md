@@ -57,7 +57,7 @@ cd netbox-docker
 
 # 1. Checkout the netbox-docker version
 git fetch --tags
-git tag -l | sort -V | tail -20
+git tag -l '5.*' | sort -V | tail -20   # List recent tags
 git checkout ${NETBOX_VERSION}
 
 # 2. Clone the NetBox source code (required — Dockerfile needs it)
@@ -65,40 +65,53 @@ git checkout ${NETBOX_VERSION}
 git clone --depth 1 --branch "v${NETBOX_VERSION}" \
   https://github.com/netbox-community/netbox.git .netbox
 
-# 3. Patch the Dockerfile
-# Add libjpeg-dev for Pillow build, fix social-auth-core bracket handling
-# IMPORTANT: Use TWO separate sed -i calls (combining -e fails)
+# 3. Patch the Dockerfile (use TWO separate sed calls)
+# Add libjpeg-dev for Pillow build
 sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
-sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
 
-# 4. Fix sentry-sdk version conflict (required for NetBox 3.4.x builds)
+# Fix build-time sed delimiter and skip mkdocs build (use Python — sed can't match nested quotes)
+python3 -c "
+with open('Dockerfile') as f:
+    c = f.read()
+# Fix social-auth-core sed: use | delimiter to avoid / conflict with ] in replacement
+c = c.replace(
+    \"sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'\",
+    \"sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'\"
+)
+# Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
+c = c.replace(
+    'SECRET_KEY=\"dummyKeyWithMinimumLength-------------------------\" /opt/netbox/venv/bin/python -m mkdocs build',
+    'echo \"Skipping mkdocs build (incompatible with Python 3.12)\" #'
+)
+with open('Dockerfile', 'w') as f:
+    f.write(c)
+"
+
+# 4. Remove hard pins from NetBox source requirements (Python 3.12 compatibility)
 sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
-
-# 5. Fix PyYAML 6.0 build failure (cannot build with modern setuptools)
 sed -i '/^PyYAML==/d' .netbox/requirements.txt
-
-# 6. Fix Pillow build failure (needs libjpeg-dev headers)
 sed -i '/^Pillow==/d' .netbox/requirements.txt
-
-# 7. Remove Django hard pin (4.1.4 does not support Python 3.12)
 sed -i '/^Django==/d' .netbox/requirements.txt
-
-# 8. Remove jsonschema hard pin (3.2.0 uses deprecated distutils)
 sed -i '/^jsonschema==/d' .netbox/requirements.txt
+sed -i '/^social-auth-core\[.*\]==/d' .netbox/requirements.txt
 
-# 9. Fix django-auth-ldap version conflict (required for NetBox 3.4.x builds)
+# 5. Fix django-auth-ldap version conflict
 sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
 
-# 10. Remove --no-binary flags + pin lxml for Python 3.12 compatibility
+# 6. Remove --no-binary flags + pin lxml for Python 3.12 compatibility
 sed -i '/^--no-binary lxml/d' requirements-container.txt
 sed -i '/^--no-binary xmlsec/d' requirements-container.txt
 echo "lxml>=5.0.0" >> requirements-container.txt
 
-# 11. Verify the patches took effect
-grep libjpeg-dev Dockerfile
-# social-auth-core sed in Dockerfile should show: social-auth-core\[[^]]*\]
+# 7. Verify the patches took effect
+grep "libjpeg-dev" Dockerfile
+grep "social-auth-core\|[^]]*\|/social-auth-core\[all\]" Dockerfile  # should show pipe delimiters
+grep "Skipping mkdocs" Dockerfile  # should exist
+grep -E "^(sentry-sdk|PyYAML|Pillow|Django|jsonschema)==[^ ]" .netbox/requirements.txt || echo "All pins removed ✓"
+grep "lxml>=5.0.0" requirements-container.txt  # should exist
+grep "^--no-binary" requirements-container.txt || echo "--no-binary removed ✓"
 
-# 12. Build (--no-cache prevents podman from using stale cached layers)
+# 8. Build (--no-cache prevents podman from using stale cached layers)
 podman build \
   --no-cache \
   --pull \
