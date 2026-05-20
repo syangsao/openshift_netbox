@@ -79,10 +79,14 @@ podman run --rm ${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION} --help
 podman push ${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}
 ```
 
-Or use the convenience script:
+Or use the convenience scripts:
 
 ```bash
+# Ubuntu 22.04 base (default — works with upstream Dockerfile as-is)
 ./build/build-and-push.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
+
+# Ubuntu 24.04 base (auto-patches Dockerfile for compatibility)
+./build/build-and-push-24.04.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
 ```
 
 ### Build Variables Reference
@@ -214,7 +218,8 @@ oc scale deployment netbox -n netbox --replicas=2
 openshift_netbox/
 ├── README.md                    # This guide
 ├── build/
-│   └── build-and-push.sh        # Helper script for Step 1
+│   ├── build-and-push.sh        # Build with Ubuntu 22.04 base
+│   └── build-and-push-24.04.sh  # Build with Ubuntu 24.04 base (patches Dockerfile)
 └── manifests/
     ├── netbox-config.yaml       # Configuration ConfigMap
     ├── netbox-env.yaml          # Environment variables Secret
@@ -248,9 +253,9 @@ Common causes: wrong DB password, invalid SECRET_KEY format, or DB not ready.
 The probe checks `/login/` on port 8080 with a 90-second initial delay. If the first startup takes longer (large migrations), increase `initialDelaySeconds` in `manifests/netbox.yaml`.
 
 ### podman build fails with `Unable to locate package libxmlsec1-1`
-The upstream `netbox-docker` Dockerfile uses package names from older Ubuntu releases (`libxmlsec1-1`, `libxmlsec1-openssl1`) that were renamed in Ubuntu 24.04 to `libxmlsec1t64` and `libxmlsec1-openssl`. Two workarounds:
+The upstream `netbox-docker` Dockerfile uses package names from older Ubuntu releases (`libxmlsec1-1`, `libxmlsec1-openssl1`) that were renamed in Ubuntu 24.04 to `libxmlsec1t64` and `libxmlsec1-openssl`.
 
-**Option A — Use Ubuntu 22.04 as the base** (easiest):
+**Option A — Use Ubuntu 22.04 as the base** (default in this guide):
 ```bash
 podman build \
   --pull \
@@ -262,7 +267,13 @@ podman build \
   .
 ```
 
-**Option B — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
+**Option B — Use the Ubuntu 24.04 build script** (auto-patches the Dockerfile):
+```bash
+./build/build-and-push-24.04.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
+```
+This script automatically patches the upstream Dockerfile with the correct package names for Ubuntu 24.04.
+
+**Option C — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
 
 ---
 
