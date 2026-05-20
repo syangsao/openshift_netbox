@@ -62,7 +62,20 @@ fi
 # Add libjpeg-dev for Pillow build, fix social-auth-core bracket handling
 echo "🔨 Patching Dockerfile for compatibility..."
 sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
-sed -i -e 's|social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
+
+# Fix build-time sed in Dockerfile: use | delimiter to avoid / conflict with ]*
+# (sed can't match the escaped quotes reliably, so use Python)
+python3 -c "
+import re
+with open('Dockerfile') as f:
+    c = f.read()
+c = c.replace(
+    \"sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'\",
+    \"sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'\"
+)
+with open('Dockerfile', 'w') as f:
+    f.write(c)
+"
 
 # Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
 # NetBox 3.4.x uses old mkdocs-material extensions that don't work with modern mkdocs
