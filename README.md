@@ -1,6 +1,6 @@
-# Deploy NetBox on OpenShift via Quay.io
+# Deploy NetBox on OpenShift
 
-A step-by-step guide to build the [NetBox Docker image](https://github.com/netbox-community/netbox-docker), push it to Quay.io, and deploy it on OpenShift.
+A step-by-step guide to build the [NetBox Docker image](https://github.com/netbox-community/netbox-docker), push it to a container registry, and deploy it on OpenShift.
 
 ## Architecture
 
@@ -21,9 +21,9 @@ NetBox Service (port 8080)
 ## Prerequisites
 
 - **Podman** installed (`podman build`/`podman push`)
-- **Quay.io** account with a repository
+- **Container registry** account with a repository
 - **OpenShift** cluster access (`oc` CLI configured)
-- **Podman login** to Quay: `podman login quay.io`
+- **Podman login** to registry: `podman login ${REGISTRY}`
 
 ---
 
@@ -39,25 +39,29 @@ cd netbox-docker
 ### Set build variables
 
 ```bash
+# Container registry (default: quay.io)
+export REGISTRY=quay.io
+
 # Choose the NetBox version tag (no "v" prefix — e.g., 4.3.0, 4.2.0, 4.1.0)
 export NETBOX_VERSION=4.3.0
 
-# Your Quay.io organization/repository
-export QUAY_ORG=your-quay-org
+# Your registry organization
+export REGISTRY_ORG=your-registry-org
 ```
 
 ### Build locally (dry run)
 
 ```bash
-# Checkout the tag and build
+# Fetch and list available tags, then checkout
 git fetch --tags
+git tag -l | sort -V | tail -20
 git checkout ${NETBOX_VERSION}
 
 podman build \
   --pull \
   --target main \
   -f Dockerfile \
-  -t "quay.io/${QUAY_ORG}/netbox:${NETBOX_VERSION}" \
+  -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
   --build-arg "FROM=docker.io/ubuntu:24.04" \
   --build-arg "NETBOX_PATH=.netbox" \
   .
@@ -66,27 +70,27 @@ podman build \
 This clones the NetBox source at the specified version, builds the image, and tags it. Verify it works:
 
 ```bash
-podman run --rm quay.io/${QUAY_ORG}/netbox:${NETBOX_VERSION} --help
+podman run --rm ${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION} --help
 ```
 
-### Push to Quay
+### Push to Registry
 
 ```bash
-podman push quay.io/${QUAY_ORG}/netbox:${NETBOX_VERSION}
+podman push ${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}
 ```
 
 Or use the convenience script:
 
 ```bash
-./build/build-and-push.sh ${NETBOX_VERSION} ${QUAY_ORG}
+./build/build-and-push.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
 ```
 
 ### Build Variables Reference
 
 | Variable | Default | Description |
 |---|---|---|
-| `NETBOX_VERSION` | (required) | Git tag or branch of NetBox source |
-| `QUAY_ORG` | (required) | Your Quay.io organization |
+| `REGISTRY` | `quay.io` | Container registry host |
+| `REGISTRY_ORG` | (required) | Your registry organization |
 | `FROM` | `docker.io/ubuntu:24.04` | Base image |
 
 ---
@@ -99,18 +103,18 @@ Or use the convenience script:
 oc new-project netbox
 ```
 
-### Create an ImagePullSecret (if Quay is private)
+### Create an ImagePullSecret (if registry is private)
 
 ```bash
-oc create secret docker-registry quay-pull-secret \
-  --docker-server=quay.io \
+oc create secret docker-registry registry-pull-secret \
+  --docker-server=${REGISTRY} \
   --docker-username=YOUR_QUAY_USERNAME \
   --docker-password=YOUR_QUAY_TOKEN \
   --docker-email=you@example.com
 
 # Attach to the default ServiceAccount
 oc patch sa default -n netbox \
-  -p '{"imagePullSecrets": [{"name": "quay-pull-secret"}]}'
+  -p '{"imagePullSecrets": [{"name": "registry-pull-secret"}]}'
 ```
 
 ---
@@ -151,7 +155,7 @@ oc wait --for=condition=ready pod -l app=netbox-redis-cache -n netbox --timeout=
 
 ### 3d. NetBox App + Worker
 
-Edit `manifests/netbox.yaml` and replace `quay.io/YOUR_ORG/netbox:4.3.0` with your actual image path.
+Edit `manifests/netbox.yaml` and replace `${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}` with your actual image path.
 
 ```bash
 oc apply -f manifests/netbox.yaml
@@ -198,7 +202,7 @@ oc scale deployment netbox -n netbox --replicas=2
 
 ### Update NetBox Version
 
-1. Rebuild and push a new image tag to Quay (Step 1)
+1. Rebuild and push a new image tag (Step 1)
 2. Update the image in `manifests/netbox.yaml`
 3. Apply: `oc apply -f manifests/netbox.yaml`
 
@@ -242,6 +246,23 @@ Common causes: wrong DB password, invalid SECRET_KEY format, or DB not ready.
 
 ### Readiness probe failing
 The probe checks `/login/` on port 8080 with a 90-second initial delay. If the first startup takes longer (large migrations), increase `initialDelaySeconds` in `manifests/netbox.yaml`.
+
+### podman build fails with `Unable to locate package libxmlsec1-1`
+The upstream `netbox-docker` Dockerfile uses package names from older Ubuntu releases (`libxmlsec1-1`, `libxmlsec1-openssl1`) that were renamed in Ubuntu 24.04 to `libxmlsec1t64` and `libxmlsec1-openssl`. Two workarounds:
+
+**Option A — Use Ubuntu 22.04 as the base** (easiest):
+```bash
+podman build \
+  --pull \
+  --target main \
+  -f Dockerfile \
+  -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
+  --build-arg "FROM=docker.io/ubuntu:22.04" \
+  --build-arg "NETBOX_PATH=.netbox" \
+  .
+```
+
+**Option B — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
 
 ---
 
