@@ -74,23 +74,23 @@ sed -i \
   -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
-# 4. Fix dependency conflicts (required for NetBox 3.4.x builds)
-
-# NetBox source pins sentry-sdk==1.11.1 but netbox-docker requires
-# sentry-sdk[django]>=2.x. Remove the hard pin from NetBox source.
+# 4. Fix sentry-sdk version conflict (required for NetBox 3.4.x builds)
 sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
 
-# netbox-docker pins django-auth-ldap==5.2.0 (requires django>=4.2) but
-# NetBox 3.4.x source doesn't pin django>=4.2, so uv resolves django==4.1.4
-# causing a conflict. Downgrade to 4.8.0 (compatible with django>=3.2).
+# 5. Fix PyYAML 6.0 build failure (cannot build with modern setuptools)
+sed -i '/^PyYAML==/d' .netbox/requirements.txt
+
+# 6. Fix django-auth-ldap version conflict (required for NetBox 3.4.x builds)
 sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
 
-# Verify the patches took effect
+# 7. Verify the patches took effect
 grep libxmlsec1 Dockerfile
+# Should show: libxmlsec1t64, libxmlsec1-dev, libxmlsec1-openssl
 
-# 4. Build
+# 8. Build (--no-cache prevents podman from using stale cached layers)
 podman build \
   --pull \
+  --no-cache \
   --target main \
   -f Dockerfile \
   -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
@@ -302,7 +302,9 @@ Both scripts auto-patch the Dockerfile and clone the NetBox source code.
 cd netbox-docker
 
 # 1. Clone the NetBox source code (required — Dockerfile needs it)
-git clone --depth 1 https://github.com/netbox-community/netbox.git .netbox
+# NetBox source uses v-prefixed tags (v3.4.1, not 3.4.1)
+git clone --depth 1 --branch "v${NETBOX_VERSION}" \
+  https://github.com/netbox-community/netbox.git .netbox
 
 # 2. Patch the Dockerfile (required for ALL Ubuntu versions)
 sed -i \
@@ -324,9 +326,10 @@ sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-conta
 grep libxmlsec1 Dockerfile
 # Should show: libxmlsec1t64, libxmlsec1-dev, libxmlsec1-openssl
 
-# 7. Build
+# 7. Build (--no-cache prevents podman from using stale cached layers)
 podman build \
   --pull \
+  --no-cache \
   --target main \
   -f Dockerfile \
   -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
