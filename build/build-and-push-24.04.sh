@@ -2,11 +2,12 @@
 # Build and push NetBox container image using Ubuntu 24.04 as the base.
 #
 # The upstream netbox-docker Dockerfile uses libxmlsec1 package names
-# that don't exist on any modern Ubuntu version. This script patches
-# the Dockerfile before building.
+# that don't exist on any modern Ubuntu version (22.04, 24.04) — they were
+# renamed to libxmlsec1t64 and libxmlsec1-openssl due to the libc6 t64 transition.
+# This script auto-patches the Dockerfile and clones the NetBox source code.
 #
-# Usage: ./build-and-push-24.04.sh <version> [registry_org] [registry]
-# Example: ./build-and-push-24.04.sh 4.3.0 my-quay-org mirror.example.com:8443
+# Usage: ./build-and-push-24.04.sh <netbox_version> [registry_org] [registry]
+# Example: ./build-and-push-24.04.sh 4.3.0 my-quay-org quay.io
 #
 # Prerequisites:
 #   - podman installed (podman build/push)
@@ -62,17 +63,27 @@ fi
 # Patch the Dockerfile for Ubuntu compatibility
 # libxmlsec1-1 and libxmlsec1-openssl1 don't exist on any modern Ubuntu
 # (22.04, 24.04) — renamed to libxmlsec1t64 and libxmlsec1-openssl
-echo "🔨 Patching Dockerfile for Ubuntu compatibility..."
+# Also fix social-auth-core extras bracket handling (upstream sed creates
+# double brackets when requirements.txt already has extras like [openidconnect])
+echo "🔨 Patching Dockerfile for Ubuntu 24.04 compatibility..."
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
+  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
 # Verify the patch took effect
+echo "🔍 Verifying patches..."
 if grep -q "libxmlsec1-1" Dockerfile; then
   echo "❌ Patch failed! libxmlsec1-1 still present in Dockerfile"
   exit 1
 fi
+if grep -q "libxmlsec1-openssl1" Dockerfile; then
+  echo "❌ Patch failed! libxmlsec1-openssl1 still present in Dockerfile"
+  exit 1
+fi
+echo "   ✅ libxmlsec1 packages: libxmlsec1t64, libxmlsec1-openssl"
+echo "   ✅ social-auth-core: fixed bracket handling"
 
 # Build with podman
 echo "🏗 Building image with podman..."

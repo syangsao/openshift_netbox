@@ -57,10 +57,13 @@ fi
 # Patch the Dockerfile for Ubuntu compatibility
 # libxmlsec1-1 and libxmlsec1-openssl1 don't exist on any modern Ubuntu
 # (22.04, 24.04) — renamed to libxmlsec1t64 and libxmlsec1-openssl
-echo "🔨 Patching Dockerfile for Ubuntu compatibility..."
+# Also fix social-auth-core extras bracket handling (upstream sed creates
+# double brackets when requirements.txt already has extras like [openidconnect])
+echo "🔨 Patching Dockerfile for compatibility..."
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
+  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
 # Verify the patch took effect
