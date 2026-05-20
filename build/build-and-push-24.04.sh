@@ -2,8 +2,8 @@
 # Build and push NetBox container image using Ubuntu 24.04 as the base.
 #
 # The upstream netbox-docker Dockerfile uses libxmlsec1 package names
-# from older Ubuntu releases that were renamed in 24.04. This script
-# patches the Dockerfile before building so it works with 24.04.
+# that don't exist on any modern Ubuntu version. This script patches
+# the Dockerfile before building.
 #
 # Usage: ./build-and-push-24.04.sh <version> [registry_org] [registry]
 # Example: ./build-and-push-24.04.sh 4.3.0 my-quay-org mirror.example.com:8443
@@ -18,6 +18,8 @@ NETBOX_VERSION="${1:?Usage: $0 <netbox_version> [registry_org] [registry]}"
 REGISTRY_ORG="${2:-your-registry-org}"
 REGISTRY="${3:-quay.io}"
 BASE_IMAGE="${BASE_IMAGE:-docker.io/ubuntu:24.04}"
+# Override NetBox source tag (netbox-docker version ≠ netbox source version)
+NETBOX_SRC_VERSION="${NETBOX_SRC_VERSION:-${NETBOX_VERSION}}"
 
 IMAGE="${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}"
 
@@ -31,29 +33,40 @@ fi
 
 cd netbox-docker
 
-# Checkout the tag/branch
+# Checkout the netbox-docker tag/branch
 git fetch --tags
 git checkout "${NETBOX_VERSION}"
 
 # Clone the actual NetBox source code into .netbox directory
 # The Dockerfile expects NETBOX_PATH to point to the NetBox source
 if [ ! -d ".netbox" ]; then
-  echo "📦 Cloning NetBox source code..."
-  git clone --depth 1 --branch "${NETBOX_VERSION}" \
-    https://github.com/netbox-community/netbox.git .netbox
+  echo "📦 Cloning NetBox source code (tag: ${NETBOX_SRC_VERSION})..."
+
+  # Try exact tag, then v-prefixed tag, then fall back to latest
+  if git ls-remote --exit-code --tags https://github.com/netbox-community/netbox.git "refs/tags/${NETBOX_SRC_VERSION}" >/dev/null 2>&1; then
+    echo "   Found tag ${NETBOX_SRC_VERSION}"
+    git clone --depth 1 --branch "${NETBOX_SRC_VERSION}" \
+      https://github.com/netbox-community/netbox.git .netbox
+  elif git ls-remote --exit-code --tags https://github.com/netbox-community/netbox.git "refs/tags/v${NETBOX_SRC_VERSION}" >/dev/null 2>&1; then
+    echo "   Found tag v${NETBOX_SRC_VERSION}"
+    git clone --depth 1 --branch "v${NETBOX_SRC_VERSION}" \
+      https://github.com/netbox-community/netbox.git .netbox
+  else
+    echo "   ⚠️  Tag ${NETBOX_SRC_VERSION} not found in netbox source repo"
+    echo "   Falling back to latest netbox source"
+    echo "   Set NETBOX_SRC_VERSION env var to specify a different version"
+    git clone --depth 1 https://github.com/netbox-community/netbox.git .netbox
+  fi
 fi
 
-# Patch the Dockerfile for Ubuntu 24.04 compatibility
-# libxmlsec1-1 -> libxmlsec1t64
-# libxmlsec1-openssl1 -> libxmlsec1-openssl
-echo "🔨 Patching Dockerfile for Ubuntu 24.04..."
+# Patch the Dockerfile for Ubuntu compatibility
+# libxmlsec1-1 and libxmlsec1-openssl1 don't exist on any modern Ubuntu
+# (22.04, 24.04) — renamed to libxmlsec1t64 and libxmlsec1-openssl
+echo "🔨 Patching Dockerfile for Ubuntu compatibility..."
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
   Dockerfile
-
-echo "   libxmlsec1-1       → libxmlsec1t64"
-echo "   libxmlsec1-openssl1 → libxmlsec1-openssl"
 
 # Verify the patch took effect
 if grep -q "libxmlsec1-1" Dockerfile; then
