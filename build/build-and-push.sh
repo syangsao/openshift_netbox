@@ -57,21 +57,24 @@ fi
 # Patch the Dockerfile for Ubuntu compatibility
 # libxmlsec1-1 and libxmlsec1-openssl1 don't exist on any modern Ubuntu
 # (22.04, 24.04) — renamed to libxmlsec1t64 and libxmlsec1-openssl
-# Also fix social-auth-core extras bracket handling (upstream sed creates
-# double brackets when requirements.txt already has extras like [openidconnect])
+# Also fix social-auth-core extras bracket handling
 echo "🔨 Patching Dockerfile for compatibility..."
-
-# Fix sentry-sdk version conflict in requirements-container.txt
-# netbox-docker pins sentry-sdk==1.11.1 but NetBox source requires sentry-sdk>=2.x
-if [ -f "requirements-container.txt" ]; then
-  echo "🔨 Fixing sentry-sdk version conflict..."
-  sed -i "/^sentry-sdk==/d" requirements-container.txt
-fi
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
-  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
+  -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
+
+# Fix sentry-sdk version conflict
+# NetBox source pins sentry-sdk==1.11.1 but netbox-docker requires sentry-sdk[django]>=2.x
+# Remove the hard pin from the NetBox source requirements so netbox-docker's version takes precedence
+echo "🔨 Fixing sentry-sdk version conflict in .netbox/requirements.txt..."
+if grep -q "^sentry-sdk==" .netbox/requirements.txt; then
+  sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
+  echo "   ✅ Removed sentry-sdk hard pin from NetBox source"
+else
+  echo "   ℹ️  No sentry-sdk hard pin found (not needed for this version)"
+fi
 
 # Verify the patch took effect
 if grep -q "libxmlsec1-1" Dockerfile; then
@@ -79,10 +82,11 @@ if grep -q "libxmlsec1-1" Dockerfile; then
   exit 1
 fi
 
-# Build with podman
+# Build with podman --no-cache to ensure file changes are picked up
 echo "🏗 Building image with podman..."
 podman build \
   --pull \
+  --no-cache \
   --target main \
   -f Dockerfile \
   -t "${IMAGE}" \
