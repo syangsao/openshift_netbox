@@ -100,7 +100,7 @@ fi
 # Python 3.12. Modern lxml/xmlsec have Python 3.12 compatible pre-built wheels.
 sed -i '/^--no-binary lxml/d' requirements-container.txt
 sed -i '/^--no-binary xmlsec/d' requirements-container.txt
-echo "   ✅ Removed --no-binary flags for lxml and xmlsec (Python 3.12 compatibility)
+echo "   ✅ Removed --no-binary flags for lxml and xmlsec (Python 3.12 compatibility)"
 
 # Verify the patches took effect
 echo "🔍 Verifying patches..."
