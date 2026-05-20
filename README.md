@@ -67,9 +67,11 @@ git clone --depth 1 --branch "v${NETBOX_VERSION}" \
 
 # 3. Patch the Dockerfile (required for ALL modern Ubuntu versions)
 # libxmlsec1-1 and libxmlsec1-openssl1 don't exist on 22.04/24.04
+# Also fix social-auth-core extras bracket handling
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
+  -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
 # Verify the patch took effect
@@ -295,6 +297,7 @@ git clone --depth 1 https://github.com/netbox-community/netbox.git .netbox
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
+  -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
 # 3. Verify the patch took effect
@@ -313,6 +316,9 @@ podman build \
 ```
 
 **Option 3 — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
+
+### podman build fails with `social-auth-core[all][openidconnect]`
+The upstream Dockerfile's sed command creates double brackets when `requirements.txt` already has `social-auth-core[openidconnect]` (NetBox 3.4.x and newer). The build scripts handle this automatically. For manual builds, the sed patch above (`social-auth-core\[*\]/social-auth-core[all]`) replaces any existing extras bracket with `[all]`.
 
 ---
 
