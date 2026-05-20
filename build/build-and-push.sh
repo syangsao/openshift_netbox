@@ -57,7 +57,7 @@ fi
 # Patch the Dockerfile for compatibility
 # Add libjpeg-dev for Pillow build, fix social-auth-core bracket handling
 echo "🔨 Patching Dockerfile for compatibility..."
-sed -i '/libxslt-dev/i\      libjpeg-dev \' Dockerfile
+sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
 sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
 
 # Fix dependency conflicts between netbox-docker and NetBox source

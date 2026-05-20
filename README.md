@@ -68,7 +68,7 @@ git clone --depth 1 --branch "v${NETBOX_VERSION}" \
 # 3. Patch the Dockerfile
 # Add libjpeg-dev for Pillow build, fix social-auth-core bracket handling
 # IMPORTANT: Use TWO separate sed -i calls (combining -e fails)
-sed -i '/libxslt-dev/i\      libjpeg-dev \' Dockerfile
+sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
 sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
 
 # 4. Fix sentry-sdk version conflict (required for NetBox 3.4.x builds)
@@ -292,7 +292,7 @@ Pillow needs `libjpeg-dev` headers to build from source. The Dockerfile doesn't 
 
 ```bash
 cd netbox-docker
-sed -i '/libxslt-dev/i\      libjpeg-dev \' Dockerfile
+sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
 sed -i '/^Pillow==/d' .netbox/requirements.txt
 ```
 
