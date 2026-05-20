@@ -84,9 +84,21 @@ if grep -q "^Pillow==" .netbox/requirements.txt; then
   echo "   ✅ Removed Pillow hard pin from NetBox source"
 fi
 
+# Fix Django: pinned 4.1.4 does not support Python 3.12 (Ubuntu 24.04).
+# Django 4.2 LTS is the first version with Python 3.12 support.
+if grep -q "^Django==" .netbox/requirements.txt; then
+  sed -i '/^Django==/d' .netbox/requirements.txt
+  echo "   ✅ Removed Django hard pin (need 4.2+ for Python 3.12)"
+fi
+
+# Fix jsonschema: pinned 3.2.0 uses deprecated distutils removed in Python 3.12.
+if grep -q "^jsonschema==" .netbox/requirements.txt; then
+  sed -i '/^jsonschema==/d' .netbox/requirements.txt
+  echo "   ✅ Removed jsonschema hard pin (3.2.0 incompatible with Python 3.12)"
+fi
+
 # Fix django-auth-ldap: netbox-docker pins django-auth-ldap==5.2.0 which
-# requires django>=4.2, but NetBox 3.4.x source doesn't pin django>=4.2,
-# so uv resolves django==4.1.4 causing a conflict. Downgrade to 4.8.0.
+# requires django>=4.2. Downgrade to 4.8.0 (supports django>=3.2).
 if grep -q "^django-auth-ldap==5" requirements-container.txt; then
   sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
   echo "   ✅ Downgraded django-auth-ldap to 4.8.0 (compatible with django<4.2)"
@@ -97,6 +109,23 @@ fi
 sed -i '/^--no-binary lxml/d' requirements-container.txt
 sed -i '/^--no-binary xmlsec/d' requirements-container.txt
 echo "   ✅ Removed --no-binary flags for lxml and xmlsec (Python 3.12 compatibility)"
+
+# Verify the patches took effect
+echo "🔍 Verifying patches..."
+if grep -q "libjpeg-dev" Dockerfile; then
+  echo "   ✅ libjpeg-dev added for Pillow build"
+fi
+if grep "social-auth-core" Dockerfile | grep -q "\[\^]]"; then
+  echo "   ✅ social-auth-core: fixed bracket handling"
+else
+  echo "   ⚠️  social-auth-core: pattern may not have been updated"
+fi
+if ! grep -q "^Django==" .netbox/requirements.txt; then
+  echo "   ✅ Django pin removed (Python 3.12 compatibility)"
+fi
+if ! grep -q "^jsonschema==" .netbox/requirements.txt; then
+  echo "   ✅ jsonschema pin removed (Python 3.12 compatibility)"
+fi
 
 # Build with podman --no-cache to ensure file changes are picked up
 echo "🏗 Building image with podman..."
