@@ -65,31 +65,31 @@ git checkout ${NETBOX_VERSION}
 git clone --depth 1 --branch "v${NETBOX_VERSION}" \
   https://github.com/netbox-community/netbox.git .netbox
 
-# 3. Patch the Dockerfile (required for ALL modern Ubuntu versions)
-# libxmlsec1-1 and libxmlsec1-openssl1 don't exist on 22.04/24.04
-# Also fix social-auth-core extras bracket handling
-sed -i \
-  -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
-  -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
-  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
-  Dockerfile
+# 3. Patch the Dockerfile
+# Add libjpeg-dev for Pillow build, fix social-auth-core bracket handling
+# IMPORTANT: Use TWO separate sed -i calls (combining -e fails)
+sed -i '/libxslt-dev/i\      libjpeg-dev \' Dockerfile
+sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
 
-# 4. Fix dependency conflicts (required for NetBox 3.4.x builds)
-
-# NetBox source pins sentry-sdk==1.11.1 but netbox-docker requires
-# sentry-sdk[django]>=2.x. Remove the hard pin from NetBox source.
+# 4. Fix sentry-sdk version conflict (required for NetBox 3.4.x builds)
 sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
 
-# netbox-docker pins django-auth-ldap==5.2.0 (requires django>=4.2) but
-# NetBox 3.4.x source doesn't pin django>=4.2, so uv resolves django==4.1.4
-# causing a conflict. Downgrade to 4.8.0 (compatible with django>=3.2).
+# 5. Fix PyYAML 6.0 build failure (cannot build with modern setuptools)
+sed -i '/^PyYAML==/d' .netbox/requirements.txt
+
+# 6. Fix Pillow build failure (needs libjpeg-dev headers)
+sed -i '/^Pillow==/d' .netbox/requirements.txt
+
+# 7. Fix django-auth-ldap version conflict (required for NetBox 3.4.x builds)
 sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
 
-# Verify the patches took effect
-grep libxmlsec1 Dockerfile
+# 8. Verify the patches took effect
+grep libjpeg-dev Dockerfile
+# social-auth-core sed in Dockerfile should show: social-auth-core\[[^]]*\]
 
-# 4. Build
+# 9. Build (--no-cache prevents podman from using stale cached layers)
 podman build \
+  --no-cache \
   --pull \
   --target main \
   -f Dockerfile \
@@ -284,49 +284,46 @@ Common causes: wrong DB password, invalid SECRET_KEY format, or DB not ready.
 ### Readiness probe failing
 The probe checks `/login/` on port 8080 with a 90-second initial delay. If the first startup takes longer (large migrations), increase `initialDelaySeconds` in `manifests/netbox.yaml`.
 
-### podman build fails with `Unable to locate package libxmlsec1-1`
-The upstream `netbox-docker` Dockerfile uses `libxmlsec1-1` and `libxmlsec1-openssl1` package names that don't exist on **any** modern Ubuntu version (22.04, 24.04) — they were renamed to `libxmlsec1t64` and `libxmlsec1-openssl` due to the libc6 t64 transition.
+### podman build fails with `RequiredDependencyException: jpeg`
 
-**Option 1 — Use the build scripts** (recommended, handles everything automatically):
-```bash
-# Ubuntu 24.04 base
-./build/build-and-push-24.04.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
+Pillow needs `libjpeg-dev` headers to build from source. The Dockerfile doesn't install it.
 
-# Ubuntu 22.04 base
-./build/build-and-push.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
-```
-Both scripts auto-patch the Dockerfile and clone the NetBox source code.
+**Fix:** Add `libjpeg-dev` to the apt-get install list and remove the Pillow pin:
 
-**Option 2 — Manual build** (patch the Dockerfile AND clone NetBox source before building):
 ```bash
 cd netbox-docker
+sed -i '/libxslt-dev/i\      libjpeg-dev \' Dockerfile
+sed -i '/^Pillow==/d' .netbox/requirements.txt
+```
 
-# 1. Clone the NetBox source code (required — Dockerfile needs it)
-git clone --depth 1 https://github.com/netbox-community/netbox.git .netbox
+### podman build fails with `social-auth-core` double brackets
 
-# 2. Patch the Dockerfile (required for ALL Ubuntu versions)
-sed -i \
-  -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
-  -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
-  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
-  Dockerfile
+The upstream Dockerfile sed creates `social-auth-core[[all]]` instead of `social-auth-core[all]`.
 
-# 3. Fix sentry-sdk version conflict (required for NetBox 3.4.x builds)
-sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
+**Fix:** Patch the Dockerfile sed command (use TWO separate sed calls):
 
-# 4. Fix PyYAML 6.0 build failure (cannot build with modern setuptools)
-sed -i '/^PyYAML==/d' .netbox/requirements.txt
+```bash
+cd netbox-docker
+sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
+```
 
-# 5. Fix django-auth-ldap version conflict (required for NetBox 3.4.x builds)
-sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
+### podman build fails with dependency conflicts
 
-# 6. Verify the patches took effect
-grep libxmlsec1 Dockerfile
-# Should show: libxmlsec1t64, libxmlsec1-dev, libxmlsec1-openssl
+See the [Manual Build Steps](#manual-build-steps) section for all required patches.
 
-# 7. Build
+**Quick fix** — use the convenience script which handles everything:
+
+```bash
+cd netbox-docker
+git checkout v${NETBOX_VERSION}
+
+git clone --depth 1 --branch "v${NETBOX_VERSION}" \
+  https://github.com/netbox-community/netbox.git .netbox
+
+# Build (--no-cache is critical to avoid stale cached layers)
 podman build \
   --pull \
+  --no-cache \
   --target main \
   -f Dockerfile \
   -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
@@ -335,7 +332,8 @@ podman build \
   .
 ```
 
-**Option 3 — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
+> Note: netbox-docker 3.4.1+ already uses correct `libxmlsec1` and `libxmlsec1-openssl`
+> package names — no renaming patches needed for these versions.
 
 ### podman build fails with `sentry-sdk` version conflict
 ```
