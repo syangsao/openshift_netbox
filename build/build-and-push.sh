@@ -55,10 +55,27 @@ if [ ! -d ".netbox" ]; then
 fi
 
 # Patch the Dockerfile for compatibility
-# Add libjpeg-dev for Pillow build, fix social-auth-core bracket handling
+# Add libjpeg-dev for Pillow build
 echo "🔨 Patching Dockerfile for compatibility..."
 sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
-sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
+
+# Fix build-time sed delimiter and skip mkdocs build (use Python — sed can't match nested quotes)
+python3 -c "
+with open('Dockerfile') as f:
+    c = f.read()
+# Fix social-auth-core sed: use | delimiter to avoid / conflict with ] in replacement
+c = c.replace(
+    \"sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'\",
+    \"sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'\"
+)
+# Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
+c = c.replace(
+    'SECRET_KEY=\"dummyKeyWithMinimumLength-------------------------\" /opt/netbox/venv/bin/python -m mkdocs build',
+    'echo \"Skipping mkdocs build (incompatible with Python 3.12)\" #'
+)
+with open('Dockerfile', 'w') as f:
+    f.write(c)
+"
 
 # Fix dependency conflicts between netbox-docker and NetBox source
 echo "🔨 Fixing dependency conflicts in requirements files..."
