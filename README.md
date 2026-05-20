@@ -74,10 +74,11 @@ sed -i \
   -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
-# 4. Fix sentry-sdk version conflict (netbox-docker 3.4.x pins old sentry-sdk)
-# Remove the conflicting sentry-sdk==1.11.1 from requirements-container.txt
-# so it doesn't conflict with sentry-sdk[django]==2.x from NetBox source
-sed -i '/^sentry-sdk==/d' requirements-container.txt
+# 4. Fix sentry-sdk version conflict (NetBox source pins old sentry-sdk)
+# NetBox source requirements.txt pins sentry-sdk==1.11.1 but netbox-docker
+# requires sentry-sdk[django]>=2.x. Remove the hard pin so netbox-docker's
+# version takes precedence.
+sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
 
 # Verify the patches took effect
 grep libxmlsec1 Dockerfile
@@ -305,11 +306,14 @@ sed -i \
   -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
-# 3. Verify the patch took effect
+# 3. Fix sentry-sdk version conflict (required for NetBox 3.4.x builds)
+sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
+
+# 4. Verify the patches took effect
 grep libxmlsec1 Dockerfile
 # Should show: libxmlsec1t64, libxmlsec1-dev, libxmlsec1-openssl
 
-# 4. Build
+# 5. Build
 podman build \
   --pull \
   --target main \
@@ -327,10 +331,12 @@ podman build \
 Because you require sentry-sdk==1.11.1 and sentry-sdk[django]==2.39.0,
 we can conclude that your requirements are unsatisfiable.
 ```
-netbox-docker 3.4.x pins `sentry-sdk==1.11.1` in `requirements-container.txt`, but NetBox source requires `sentry-sdk>=2.x`. Fix by removing the pin:
+NetBox source `requirements.txt` pins `sentry-sdk==1.11.1` but netbox-docker's
+`requirements-container.txt` requires `sentry-sdk[django]>=2.x`. Fix by removing
+the hard pin from the NetBox source requirements:
 
 ```bash
-sed -i '/^sentry-sdk==/d' requirements-container.txt
+sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
 ```
 
 ### podman build fails with `social-auth-core[all][openidconnect]`
