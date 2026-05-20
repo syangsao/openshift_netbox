@@ -104,12 +104,14 @@ if grep -q "^django-auth-ldap==5" requirements-container.txt; then
   echo "   ✅ Downgraded django-auth-ldap to 4.8.0 (compatible with django<4.2)"
 fi
 
-# Remove --no-binary flags: lxml 4.6.5 has no Python 3.12 wheel, so we force
-# lxml>=5.0.0 which has pre-built wheels for Python 3.12.
+# Remove --no-binary flags + fix lxml compatibility:
+# social-auth-core 4.3.0 pins lxml<4.7, but lxml 4.6.5 has no Python 3.12 wheel.
+# Remove the social-auth-core version pin so uv resolves to 4.4.0+ (supports lxml 5.x).
 sed -i '/^--no-binary lxml/d' requirements-container.txt
 sed -i '/^--no-binary xmlsec/d' requirements-container.txt
+sed -i '/^social-auth-core\[.*\]==/d' .netbox/requirements.txt
 echo "lxml>=5.0.0" >> requirements-container.txt
-echo "   ✅ Removed --no-binary flags for lxml and xmlsec + pinned lxml>=5.0.0 (Python 3.12 wheels)"
+echo "   ✅ Removed --no-binary flags, social-auth-core pin + pinned lxml>=5.0.0 (Python 3.12 wheels)"
 
 # Verify the patches took effect
 echo "🔍 Verifying patches..."
@@ -129,6 +131,9 @@ if ! grep -q "^jsonschema==" .netbox/requirements.txt; then
 fi
 if grep -q "lxml>=5.0.0" requirements-container.txt; then
   echo "   ✅ lxml>=5.0.0 pinned (Python 3.12 wheels)"
+fi
+if ! grep -q "^social-auth-core\[.*\]==" .netbox/requirements.txt; then
+  echo "   ✅ social-auth-core pin removed (lxml compatibility)"
 fi
 
 # Build with podman --no-cache to ensure file changes are picked up
