@@ -1,10 +1,8 @@
 #!/bin/bash
 # Build and push NetBox container image using Ubuntu 24.04 as the base.
 #
-# The upstream netbox-docker Dockerfile uses libxmlsec1 package names
-# that don't exist on any modern Ubuntu version (22.04, 24.04) — they were
-# renamed to libxmlsec1t64 and libxmlsec1-openssl due to the libc6 t64 transition.
 # This script auto-patches the Dockerfile and clones the NetBox source code.
+# All patches are applied automatically before building.
 #
 # Usage: ./build-and-push-24.04.sh <netbox_version> [registry_org] [registry]
 # Example: ./build-and-push-24.04.sh 4.3.0 my-quay-org quay.io
@@ -60,16 +58,11 @@ if [ ! -d ".netbox" ]; then
   fi
 fi
 
-# Patch the Dockerfile for Ubuntu compatibility
-# libxmlsec1-1 and libxmlsec1-openssl1 don't exist on any modern Ubuntu
-# (22.04, 24.04) — renamed to libxmlsec1t64 and libxmlsec1-openssl
-# Also fix social-auth-core extras bracket handling
-echo "🔨 Patching Dockerfile for Ubuntu 24.04 compatibility..."
-sed -i \
-  -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
-  -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
-  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
-  Dockerfile
+# Patch the Dockerfile
+# Add libjpeg-dev for Pillow build, fix social-auth-core bracket handling
+echo "🔨 Patching Dockerfile for compatibility..."
+sed -i '/libxslt-dev/i\      libjpeg-dev \' Dockerfile
+sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
 
 # Fix dependency conflicts between netbox-docker and NetBox source
 echo "🔨 Fixing dependency conflicts in requirements files..."
@@ -79,14 +72,20 @@ echo "🔨 Fixing dependency conflicts in requirements files..."
 if grep -q "^sentry-sdk==" .netbox/requirements.txt; then
   sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
   echo "   ✅ Removed sentry-sdk hard pin from NetBox source"
+fi
 
 # Fix PyYAML 6.0: cannot build from source with modern setuptools
-# (AttributeError: cython_sources). Remove hard pin so uv resolves
-# to a newer version with pre-built wheels.
+# (AttributeError: cython_sources). Remove hard pin so uv resolves to wheels.
 if grep -q "^PyYAML==" .netbox/requirements.txt; then
-  sed -i "/^PyYAML==/d" .netbox/requirements.txt
+  sed -i '/^PyYAML==/d' .netbox/requirements.txt
   echo "   ✅ Removed PyYAML hard pin from NetBox source"
 fi
+
+# Fix Pillow: pinned version needs libjpeg-dev to build from source
+# Remove hard pin so uv resolves to a version with pre-built wheels.
+if grep -q "^Pillow==" .netbox/requirements.txt; then
+  sed -i '/^Pillow==/d' .netbox/requirements.txt
+  echo "   ✅ Removed Pillow hard pin from NetBox source"
 fi
 
 # Fix django-auth-ldap: netbox-docker pins django-auth-ldap==5.2.0 which
@@ -99,16 +98,14 @@ fi
 
 # Verify the patches took effect
 echo "🔍 Verifying patches..."
-if grep -q "libxmlsec1-1" Dockerfile; then
-  echo "❌ Patch failed! libxmlsec1-1 still present in Dockerfile"
-  exit 1
+if grep -q "libjpeg-dev" Dockerfile; then
+  echo "   ✅ libjpeg-dev added for Pillow build"
 fi
-if grep -q "libxmlsec1-openssl1" Dockerfile; then
-  echo "❌ Patch failed! libxmlsec1-openssl1 still present in Dockerfile"
-  exit 1
+if grep "social-auth-core" Dockerfile | grep -q "\[\^]]"; then
+  echo "   ✅ social-auth-core: fixed bracket handling"
+else
+  echo "   ⚠️  social-auth-core: pattern may not have been updated"
 fi
-echo "   ✅ libxmlsec1 packages: libxmlsec1t64, libxmlsec1-openssl"
-echo "   ✅ social-auth-core: fixed bracket handling"
 
 # Build with podman --no-cache to ensure file changes are picked up
 echo "🏗 Building image with podman..."

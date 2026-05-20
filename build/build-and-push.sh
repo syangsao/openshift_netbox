@@ -12,7 +12,7 @@ set -euo pipefail
 NETBOX_VERSION="${1:?Usage: $0 <netbox_version> [registry_org] [registry]}"
 REGISTRY_ORG="${2:-your-registry-org}"
 REGISTRY="${3:-quay.io}"
-BASE_IMAGE="${BASE_IMAGE:-docker.io/ubuntu:24.04}"
+BASE_IMAGE="${BASE_IMAGE:-docker.io/ubuntu:22.04}"
 # Override NetBox source tag (netbox-docker version ≠ netbox source version)
 NETBOX_SRC_VERSION="${NETBOX_SRC_VERSION:-${NETBOX_VERSION}}"
 
@@ -54,16 +54,11 @@ if [ ! -d ".netbox" ]; then
   fi
 fi
 
-# Patch the Dockerfile for Ubuntu compatibility
-# libxmlsec1-1 and libxmlsec1-openssl1 don't exist on any modern Ubuntu
-# (22.04, 24.04) — renamed to libxmlsec1t64 and libxmlsec1-openssl
-# Also fix social-auth-core extras bracket handling
+# Patch the Dockerfile for compatibility
+# Add libjpeg-dev for Pillow build, fix social-auth-core bracket handling
 echo "🔨 Patching Dockerfile for compatibility..."
-sed -i \
-  -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
-  -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
-  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
-  Dockerfile
+sed -i '/libxslt-dev/i\      libjpeg-dev \' Dockerfile
+sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
 
 # Fix dependency conflicts between netbox-docker and NetBox source
 echo "🔨 Fixing dependency conflicts in requirements files..."
@@ -73,14 +68,20 @@ echo "🔨 Fixing dependency conflicts in requirements files..."
 if grep -q "^sentry-sdk==" .netbox/requirements.txt; then
   sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
   echo "   ✅ Removed sentry-sdk hard pin from NetBox source"
+fi
 
 # Fix PyYAML 6.0: cannot build from source with modern setuptools
-# (AttributeError: cython_sources). Remove hard pin so uv resolves
-# to a newer version with pre-built wheels.
+# (AttributeError: cython_sources). Remove hard pin so uv resolves to wheels.
 if grep -q "^PyYAML==" .netbox/requirements.txt; then
-  sed -i "/^PyYAML==/d" .netbox/requirements.txt
+  sed -i '/^PyYAML==/d' .netbox/requirements.txt
   echo "   ✅ Removed PyYAML hard pin from NetBox source"
 fi
+
+# Fix Pillow: pinned version needs libjpeg-dev to build from source
+# Remove hard pin so uv resolves to a version with pre-built wheels.
+if grep -q "^Pillow==" .netbox/requirements.txt; then
+  sed -i '/^Pillow==/d' .netbox/requirements.txt
+  echo "   ✅ Removed Pillow hard pin from NetBox source"
 fi
 
 # Fix django-auth-ldap: netbox-docker pins django-auth-ldap==5.2.0 which
@@ -89,12 +90,6 @@ fi
 if grep -q "^django-auth-ldap==5" requirements-container.txt; then
   sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
   echo "   ✅ Downgraded django-auth-ldap to 4.8.0 (compatible with django<4.2)"
-fi
-
-# Verify the Dockerfile patch took effect
-if grep -q "libxmlsec1-1" Dockerfile; then
-  echo "❌ Patch failed! libxmlsec1-1 still present in Dockerfile"
-  exit 1
 fi
 
 # Build with podman --no-cache to ensure file changes are picked up
