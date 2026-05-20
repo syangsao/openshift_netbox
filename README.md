@@ -314,14 +314,17 @@ sed -i \
 # 3. Fix sentry-sdk version conflict (required for NetBox 3.4.x builds)
 sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
 
-# 4. Fix django-auth-ldap version conflict (required for NetBox 3.4.x builds)
+# 4. Fix PyYAML 6.0 build failure (cannot build with modern setuptools)
+sed -i '/^PyYAML==/d' .netbox/requirements.txt
+
+# 5. Fix django-auth-ldap version conflict (required for NetBox 3.4.x builds)
 sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
 
-# 5. Verify the patches took effect
+# 6. Verify the patches took effect
 grep libxmlsec1 Dockerfile
 # Should show: libxmlsec1t64, libxmlsec1-dev, libxmlsec1-openssl
 
-# 6. Build
+# 7. Build
 podman build \
   --pull \
   --target main \
@@ -358,6 +361,18 @@ resolves `django==4.1.4`. Fix by downgrading django-auth-ldap:
 
 ```bash
 sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
+```
+
+### podman build fails with `pyyaml` build failure
+```
+AttributeError: 'build_ext' object has no attribute 'cython_sources'
+```
+PyYAML 6.0 requires Cython to build from source but doesn't declare it as a
+build dependency. Remove the hard pin so uv resolves to a newer version with
+pre-built wheels:
+
+```bash
+sed -i '/^PyYAML==/d' .netbox/requirements.txt
 ```
 
 ### podman build fails with `social-auth-core[all][openidconnect]`

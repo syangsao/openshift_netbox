@@ -79,6 +79,14 @@ echo "🔨 Fixing dependency conflicts in requirements files..."
 if grep -q "^sentry-sdk==" .netbox/requirements.txt; then
   sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
   echo "   ✅ Removed sentry-sdk hard pin from NetBox source"
+
+# Fix PyYAML 6.0: cannot build from source with modern setuptools
+# (AttributeError: cython_sources). Remove hard pin so uv resolves
+# to a newer version with pre-built wheels.
+if grep -q "^PyYAML==" .netbox/requirements.txt; then
+  sed -i "/^PyYAML==/d" .netbox/requirements.txt
+  echo "   ✅ Removed PyYAML hard pin from NetBox source"
+fi
 fi
 
 # Fix django-auth-ldap: netbox-docker pins django-auth-ldap==5.2.0 which
