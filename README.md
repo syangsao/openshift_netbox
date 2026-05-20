@@ -83,11 +83,15 @@ sed -i '/^Pillow==/d' .netbox/requirements.txt
 # 7. Fix django-auth-ldap version conflict (required for NetBox 3.4.x builds)
 sed -i 's/^django-auth-ldap==5.2.0$/django-auth-ldap==4.8.0/' requirements-container.txt
 
-# 8. Verify the patches took effect
+# 8. Remove --no-binary flags (lxml 4.6.5 Cython code fails with Python 3.12)
+sed -i '/^--no-binary lxml/d' requirements-container.txt
+sed -i '/^--no-binary xmlsec/d' requirements-container.txt
+
+# 9. Verify the patches took effect
 grep libjpeg-dev Dockerfile
 # social-auth-core sed in Dockerfile should show: social-auth-core\[[^]]*\]
 
-# 9. Build (--no-cache prevents podman from using stale cached layers)
+# 10. Build (--no-cache prevents podman from using stale cached layers)
 podman build \
   --no-cache \
   --pull \
@@ -305,6 +309,22 @@ The upstream Dockerfile sed creates `social-auth-core[[all]]` instead of `social
 ```bash
 cd netbox-docker
 sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
+```
+
+### podman build fails with `lxml==4.6.5` build error
+
+```
+src/lxml/etree.c:5604:45: error: 'PyThreadState' has no member named 'curexc_type'
+```
+
+NetBox 3.4.x `requirements-container.txt` has `--no-binary lxml` which forces
+building lxml 4.6.5 from source. Its Cython code uses Python 3.8 APIs removed in
+Python 3.12. Remove the `--no-binary` flags to let uv use pre-built wheels:
+
+```bash
+cd netbox-docker
+sed -i '/^--no-binary lxml/d' requirements-container.txt
+sed -i '/^--no-binary xmlsec/d' requirements-container.txt
 ```
 
 ### podman build fails with dependency conflicts

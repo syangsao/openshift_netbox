@@ -96,6 +96,12 @@ if grep -q "^django-auth-ldap==5" requirements-container.txt; then
   echo "   ✅ Downgraded django-auth-ldap to 4.8.0 (compatible with django<4.2)"
 fi
 
+# Remove --no-binary flags: lxml 4.6.5 has Cython code incompatible with
+# Python 3.12. Modern lxml/xmlsec have Python 3.12 compatible pre-built wheels.
+sed -i '/^--no-binary lxml/d' requirements-container.txt
+sed -i '/^--no-binary xmlsec/d' requirements-container.txt
+echo "   ✅ Removed --no-binary flags for lxml and xmlsec (Python 3.12 compatibility)
+
 # Verify the patches took effect
 echo "🔍 Verifying patches..."
 if grep -q "libjpeg-dev" Dockerfile; then
