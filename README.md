@@ -49,14 +49,33 @@ export NETBOX_VERSION=4.3.0
 export REGISTRY_ORG=your-registry-org
 ```
 
-### Build locally (dry run)
+### Manual Build Steps
 
 ```bash
-# Fetch and list available tags, then checkout
+git clone https://github.com/netbox-community/netbox-docker.git
+cd netbox-docker
+
+# 1. Checkout the netbox-docker version
 git fetch --tags
 git tag -l | sort -V | tail -20
 git checkout ${NETBOX_VERSION}
 
+# 2. Clone the NetBox source code (required — Dockerfile needs it)
+# The netbox source repo uses v-prefixed tags (v4.0.2, not 4.0.2)
+git clone --depth 1 --branch "v${NETBOX_VERSION}" \
+  https://github.com/netbox-community/netbox.git .netbox
+
+# 3. Patch the Dockerfile (required for ALL modern Ubuntu versions)
+# libxmlsec1-1 and libxmlsec1-openssl1 don't exist on 22.04/24.04
+sed -i \
+  -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
+  -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
+  Dockerfile
+
+# Verify the patch took effect
+grep libxmlsec1 Dockerfile
+
+# 4. Build
 podman build \
   --pull \
   --target main \
@@ -67,7 +86,7 @@ podman build \
   .
 ```
 
-This clones the NetBox source at the specified version, builds the image, and tags it. Verify it works:
+This clones both repos, patches the Dockerfile for package name compatibility, builds the image, and tags it. Verify it works:
 
 ```bash
 podman run --rm ${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION} --help
@@ -79,14 +98,14 @@ podman run --rm ${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION} --help
 podman push ${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}
 ```
 
-Or use the convenience scripts:
+Or use the convenience scripts which handle everything automatically:
 
 ```bash
-# Ubuntu 22.04 base (default — works with upstream Dockerfile as-is)
-./build/build-and-push.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
-
-# Ubuntu 24.04 base (auto-patches Dockerfile for compatibility)
+# Ubuntu 24.04 base (recommended)
 ./build/build-and-push-24.04.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
+
+# Ubuntu 22.04 base
+./build/build-and-push.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
 ```
 
 ### Build Variables Reference
