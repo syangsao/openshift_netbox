@@ -23,7 +23,7 @@ IMAGE="${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}"
 
 echo "🔧 Building NetBox ${NETBOX_VERSION} (Ubuntu 24.04) -> ${IMAGE}"
 
-# Clone if needed
+# Clone netbox-docker if needed
 if [ ! -d "netbox-docker" ]; then
   echo "📦 Cloning netbox-docker..."
   git clone https://github.com/netbox-community/netbox-docker.git
@@ -34,6 +34,14 @@ cd netbox-docker
 # Checkout the tag/branch
 git fetch --tags
 git checkout "${NETBOX_VERSION}"
+
+# Clone the actual NetBox source code into .netbox directory
+# The Dockerfile expects NETBOX_PATH to point to the NetBox source
+if [ ! -d ".netbox" ]; then
+  echo "📦 Cloning NetBox source code..."
+  git clone --depth 1 --branch "${NETBOX_VERSION}" \
+    https://github.com/netbox-community/netbox.git .netbox
+fi
 
 # Patch the Dockerfile for Ubuntu 24.04 compatibility
 # libxmlsec1-1 -> libxmlsec1t64
@@ -46,6 +54,12 @@ sed -i \
 
 echo "   libxmlsec1-1       → libxmlsec1t64"
 echo "   libxmlsec1-openssl1 → libxmlsec1-openssl"
+
+# Verify the patch took effect
+if grep -q "libxmlsec1-1" Dockerfile; then
+  echo "❌ Patch failed! libxmlsec1-1 still present in Dockerfile"
+  exit 1
+fi
 
 # Build with podman
 echo "🏗 Building image with podman..."

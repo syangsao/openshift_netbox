@@ -18,7 +18,7 @@ IMAGE="${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}"
 
 echo "🔧 Building NetBox ${NETBOX_VERSION} -> ${IMAGE}"
 
-# Clone if needed
+# Clone netbox-docker if needed
 if [ ! -d "netbox-docker" ]; then
   echo "📦 Cloning netbox-docker..."
   git clone https://github.com/netbox-community/netbox-docker.git
@@ -29,6 +29,14 @@ cd netbox-docker
 # Checkout the tag/branch
 git fetch --tags
 git checkout "${NETBOX_VERSION}"
+
+# Clone the actual NetBox source code into .netbox directory
+# The Dockerfile expects NETBOX_PATH to point to the NetBox source
+if [ ! -d ".netbox" ]; then
+  echo "📦 Cloning NetBox source code..."
+  git clone --depth 1 --branch "${NETBOX_VERSION}" \
+    https://github.com/netbox-community/netbox.git .netbox
+fi
 
 # Build with podman (podman is docker-compatible for build commands)
 echo "🏗 Building image with podman..."
