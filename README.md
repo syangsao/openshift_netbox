@@ -74,7 +74,12 @@ sed -i \
   -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
-# Verify the patch took effect
+# 4. Fix sentry-sdk version conflict (netbox-docker 3.4.x pins old sentry-sdk)
+# Remove the conflicting sentry-sdk==1.11.1 from requirements-container.txt
+# so it doesn't conflict with sentry-sdk[django]==2.x from NetBox source
+sed -i '/^sentry-sdk==/d' requirements-container.txt
+
+# Verify the patches took effect
 grep libxmlsec1 Dockerfile
 
 # 4. Build
@@ -316,6 +321,17 @@ podman build \
 ```
 
 **Option 3 — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
+
+### podman build fails with `sentry-sdk` version conflict
+```
+Because you require sentry-sdk==1.11.1 and sentry-sdk[django]==2.39.0,
+we can conclude that your requirements are unsatisfiable.
+```
+netbox-docker 3.4.x pins `sentry-sdk==1.11.1` in `requirements-container.txt`, but NetBox source requires `sentry-sdk>=2.x`. Fix by removing the pin:
+
+```bash
+sed -i '/^sentry-sdk==/d' requirements-container.txt
+```
 
 ### podman build fails with `social-auth-core[all][openidconnect]`
 The upstream Dockerfile's sed command creates double brackets when `requirements.txt` already has `social-auth-core[openidconnect]` (NetBox 3.4.x and newer). The build scripts handle this automatically. For manual builds, the sed patch above (`social-auth-core\[*\]/social-auth-core[all]`) replaces any existing extras bracket with `[all]`.
