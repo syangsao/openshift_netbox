@@ -255,7 +255,41 @@ The probe checks `/login/` on port 8080 with a 90-second initial delay. If the f
 ### podman build fails with `Unable to locate package libxmlsec1-1`
 The upstream `netbox-docker` Dockerfile uses package names from older Ubuntu releases (`libxmlsec1-1`, `libxmlsec1-openssl1`) that were renamed in Ubuntu 24.04 to `libxmlsec1t64` and `libxmlsec1-openssl`.
 
-**Option A — Use Ubuntu 22.04 as the base** (default in this guide):
+**Option 1 — Use the Ubuntu 24.04 build script** (recommended):
+```bash
+# Pull the latest code first
+git pull origin main
+
+# Use the 24.04 script — it patches the Dockerfile automatically
+./build/build-and-push-24.04.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
+```
+
+**Option 2 — Patch manually before building**:
+```bash
+cd netbox-docker
+
+# Patch the Dockerfile BEFORE running podman build
+sed -i \
+  -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
+  -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
+  Dockerfile
+
+# Verify the patch took effect
+grep libxmlsec1 Dockerfile
+# Should show: libxmlsec1t64, libxmlsec1-dev, libxmlsec1-openssl
+
+# Build
+podman build \
+  --pull \
+  --target main \
+  -f Dockerfile \
+  -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
+  --build-arg "FROM=docker.io/ubuntu:24.04" \
+  --build-arg "NETBOX_PATH=.netbox" \
+  .
+```
+
+**Option 3 — Use Ubuntu 22.04 as the base** (no patching needed):
 ```bash
 podman build \
   --pull \
@@ -267,13 +301,7 @@ podman build \
   .
 ```
 
-**Option B — Use the Ubuntu 24.04 build script** (auto-patches the Dockerfile):
-```bash
-./build/build-and-push-24.04.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
-```
-This script automatically patches the upstream Dockerfile with the correct package names for Ubuntu 24.04.
-
-**Option C — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
+**Option 4 — Fork and patch the Dockerfile**: Clone [netbox-docker](https://github.com/netbox-community/netbox-docker), replace the old package names, and build from your fork.
 
 ---
 
