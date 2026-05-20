@@ -62,7 +62,7 @@ echo "🔨 Patching Dockerfile for compatibility..."
 sed -i \
   -e 's/libxmlsec1-1\b/libxmlsec1t64/g' \
   -e 's/libxmlsec1-openssl1\b/libxmlsec1-openssl/g' \
-  -e 's|social-auth-core/social-auth-core\\[all\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
+  -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\[*\]/social-auth-core[all]|g' \
   Dockerfile
 
 # Fix dependency conflicts between netbox-docker and NetBox source
