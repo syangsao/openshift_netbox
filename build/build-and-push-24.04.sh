@@ -108,11 +108,12 @@ if grep -q "^django-auth-ldap==5" requirements-container.txt; then
   echo "   ✅ Downgraded django-auth-ldap to 4.8.0 (compatible with django<4.2)"
 fi
 
-# Remove --no-binary flags: lxml 4.6.5 has Cython code incompatible with
-# Python 3.12. Modern lxml/xmlsec have Python 3.12 compatible pre-built wheels.
+# Remove --no-binary flags: lxml 4.6.5 has no Python 3.12 wheel, so we force
+# lxml>=5.0.0 which has pre-built wheels for Python 3.12.
 sed -i '/^--no-binary lxml/d' requirements-container.txt
 sed -i '/^--no-binary xmlsec/d' requirements-container.txt
-echo "   ✅ Removed --no-binary flags for lxml and xmlsec (Python 3.12 compatibility)"
+echo "lxml>=5.0.0" >> requirements-container.txt
+echo "   ✅ Removed --no-binary flags for lxml and xmlsec + pinned lxml>=5.0.0 (Python 3.12 wheels)"
 
 # Verify the patches took effect
 echo "🔍 Verifying patches..."
@@ -129,6 +130,9 @@ if ! grep -q "^Django==" .netbox/requirements.txt; then
 fi
 if ! grep -q "^jsonschema==" .netbox/requirements.txt; then
   echo "   ✅ jsonschema pin removed (Python 3.12 compatibility)"
+fi
+if grep -q "lxml>=5.0.0" requirements-container.txt; then
+  echo "   ✅ lxml>=5.0.0 pinned (Python 3.12 wheels)"
 fi
 
 # Build with podman --no-cache to ensure file changes are picked up
