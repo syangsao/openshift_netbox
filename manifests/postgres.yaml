@@ -36,6 +36,8 @@ spec:
       labels:
         app: netbox-postgres
     spec:
+      securityContext:
+        fsGroup: 7000
       containers:
         - name: postgres
           image: postgres:18-alpine
@@ -63,7 +65,7 @@ spec:
                   key: DB_PASSWORD
           volumeMounts:
             - name: postgres-data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql
           resources:
             requests:
               cpu: 250m
