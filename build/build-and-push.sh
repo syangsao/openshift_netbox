@@ -71,7 +71,7 @@ c = c.replace(
 # Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
 c = c.replace(
     'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
-    "echo 'Skipping mkdocs build (incompatible with Python 3.12) #"
+    "echo 'Skipping mkdocs build (incompatible with Python 3.12)' #"
 )
 with open('Dockerfile', 'w') as f:
     f.write(c)
