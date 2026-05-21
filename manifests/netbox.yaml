@@ -34,6 +34,8 @@ spec:
       labels:
         app: netbox
     spec:
+      imagePullSecrets:
+        - name: netbox-image-pull-secret
       containers:
         # ===================================================================
         # NetBox App (Granian ASGI server)
@@ -42,6 +44,14 @@ spec:
           # CHANGE: Replace with your actual Quay image path and tag
           image: quay.io/YOUR_ORG/netbox:4.3.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 8080
               name: http
@@ -88,6 +98,14 @@ spec:
           # CHANGE: Replace with your actual Quay image path and tag
           image: quay.io/YOUR_ORG/netbox:4.3.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           envFrom:
             - secretRef:
                 name: netbox-env

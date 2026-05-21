@@ -165,17 +165,32 @@ oc new-project netbox
 
 ### Create an ImagePullSecret (if registry is private)
 
+**Option A: Apply the pre-made manifest** (recommended)
+
 ```bash
-oc create secret docker-registry registry-pull-secret \
+oc apply -f manifests/netbox-image-pull-secret.yaml
+```
+
+The manifest `manifests/netbox-image-pull-secret.yaml` is pre-configured with your internal Quay credentials.
+
+**Option B: Create from scratch**
+
+```bash
+oc create secret docker-registry netbox-image-pull-secret \
   --docker-server=${REGISTRY} \
   --docker-username=YOUR_QUAY_USERNAME \
   --docker-password=YOUR_QUAY_TOKEN \
   --docker-email=you@example.com
-
-# Attach to the default ServiceAccount
-oc patch sa default -n netbox \
-  -p '{"imagePullSecrets": [{"name": "registry-pull-secret"}]}'
 ```
+
+### OpenShift SCC Compliance
+
+OpenShift 4.x enforces [Security Context Constraints](https://docs.openshift.com/latest/security/securing Applications_and_Projects/configuring-scc.html). All manifests in this repo are configured to work with the `restricted-v2` SCC — each container specifies `securityContext` with `runAsNonRoot`, `allowPrivilegeEscalation: false`, and `capabilities.drop: ["ALL"]`.
+
+If you get `unable to validate against any security context constraint`, check:
+- Your ServiceAccount has the correct SCC bound: `oc describe scc restricted-v2`
+- No pod-level `fsGroup` is set (use container-level security instead)
+- All containers have `securityContext` defined
 
 ---
 
@@ -183,11 +198,12 @@ oc patch sa default -n netbox \
 
 All manifests live in the `manifests/` directory. Apply them in order.
 
-### 3a. Configuration (ConfigMap + Secret)
+### 3a. Configuration (ConfigMap + Secret + ImagePullSecret)
 
 ```bash
 oc apply -f manifests/netbox-config.yaml
 oc apply -f manifests/netbox-env.yaml
+oc apply -f manifests/netbox-image-pull-secret.yaml  # for private registries
 ```
 
 **Important**: Edit `manifests/netbox-env.yaml` and set **real passwords** and a **strong SECRET_KEY** (minimum 50 characters). The defaults are placeholders.
@@ -279,6 +295,7 @@ openshift_netbox/
 └── manifests/
     ├── netbox-config.yaml       # Configuration ConfigMap
     ├── netbox-env.yaml          # Environment variables Secret
+    ├── netbox-image-pull-secret.yaml  # Image pull secret for private registry
     ├── postgres.yaml            # PostgreSQL deployment + PVC
     ├── redis.yaml               # Redis session store + PVC
     ├── redis-cache.yaml         # Redis cache + PVC
