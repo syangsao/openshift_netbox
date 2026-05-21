@@ -64,22 +64,22 @@ echo "🔨 Patching Dockerfile for compatibility..."
 sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
 
 # Fix build-time sed in Dockerfile: use | delimiter to avoid / conflict with ]*
-# (sed can't match the escaped quotes reliably, so use Python)
-python3 -c "
-import re
+# Also skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
+# (sed can't match the escaped quotes reliably, so use Python heredoc)
+python3 << 'PYEOF'
 with open('Dockerfile') as f:
     c = f.read()
 c = c.replace(
-    \"sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'\",
-    \"sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'\"
+    "sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'",
+    "sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'"
+)
+c = c.replace(
+    'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
+    "echo 'Skipping mkdocs build (incompatible with Python 3.12) #"
 )
 with open('Dockerfile', 'w') as f:
     f.write(c)
-"
-
-# Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
-# NetBox 3.4.x uses old mkdocs-material extensions that don't work with modern mkdocs
-sed -i 's|SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build|echo "Skipping mkdocs build (incompatible with Python 3.12)" #|g' Dockerfile
+PYEOF
 
 # Fix dependency conflicts between netbox-docker and NetBox source
 echo "🔨 Fixing dependency conflicts in requirements files..."
