@@ -36,11 +36,17 @@ spec:
       labels:
         app: netbox-postgres
     spec:
-      securityContext:
-        fsGroup: 7000
       containers:
         - name: postgres
           image: postgres:18-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 5432
               name: postgres
@@ -64,6 +70,8 @@ spec:
                   name: netbox-env
                   key: DB_PASSWORD
           volumeMounts:
+            - name: run-tmp
+              mountPath: /run
             - name: postgres-data
               mountPath: /var/lib/postgresql
           resources:
@@ -86,6 +94,8 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
       volumes:
+        - name: run-tmp
+          emptyDir: {}
         - name: postgres-data
           persistentVolumeClaim:
             claimName: netbox-postgres-pvc

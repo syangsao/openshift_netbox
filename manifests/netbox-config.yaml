@@ -39,7 +39,7 @@ data:
             'CONN_MAX_AGE': int(os.environ.get('REDIS_CONN_MAX_AGE', 300)),
             'SSL': os.environ.get('REDIS_SSL', 'false').lower() == 'true',
         },
-        'config': {
+        'caching': {
             'HOST': os.environ.get('REDIS_CACHE_HOST', 'netbox-redis-cache'),
             'PORT': int(os.environ.get('REDIS_CACHE_PORT', 6379)),
             'PASSWORD': os.environ.get('REDIS_CACHE_PASSWORD', ''),

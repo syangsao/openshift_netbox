@@ -15,25 +15,25 @@ stringData:
   DB_HOST: "netbox-postgres"
   DB_NAME: "netbox"
   DB_USER: "netbox"
-  DB_PASSWORD: "CHANGE-ME-db-strong-password"
+  DB_PASSWORD: "NxE1bHnplEANALJ9Vao3ndK4aH7i56Z0vCG7PZbTzqI"
 
   # --- Redis (Session Store) ---
   REDIS_HOST: "netbox-redis"
-  REDIS_PASSWORD: "CHANGE-ME-redis-session-password"
+  REDIS_PASSWORD: "i_5rvZBxxiC74tXu5r9HEaklBwJSNJtM1M1cJoVFXpo"
 
   # --- Redis (Cache) ---
   REDIS_CACHE_HOST: "netbox-redis-cache"
-  REDIS_CACHE_PASSWORD: "CHANGE-ME-redis-cache-password"
+  REDIS_CACHE_PASSWORD: "tYzz3tOjm_UmZ6Y-MsMKcf02nEDykQimQ9KLlI9AJbk"
 
   # --- Security ---
   # Generate with: python3 -c "import secrets; print(secrets.token_urlsafe(64))"
-  SECRET_KEY: "CHANGE-ME-generate-a-real-secret-key-here-min-50-chars"
+  SECRET_KEY: "ab-ABA3pHOMesAA5Zpx5eKf3WT-EV34Y2Phj8qP9H4SFJKZk6WnT01242fqLfkYScWU2TQylazECb6bRSfUMXg"
 
   # --- Superuser (auto-created on first boot) ---
   # Set to "true" to skip creating a superuser (e.g., if using SSO)
   SKIP_SUPERUSER: "false"
   SUPERUSER_NAME: "admin"
-  SUPERUSER_PASSWORD: "CHANGE-ME-admin-password"
+  SUPERUSER_PASSWORD: "V0WfS0jyXNDOs70ibQCZVl00ht8Qn0po"
   SUPERUSER_EMAIL: "admin@example.com"
 
   # --- Granian (ASGI server) ---
