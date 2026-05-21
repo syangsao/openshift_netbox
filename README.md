@@ -65,27 +65,27 @@ git checkout ${NETBOX_VERSION}
 git clone --depth 1 --branch "v${NETBOX_VERSION}" \
   https://github.com/netbox-community/netbox.git .netbox
 
-# 3. Patch the Dockerfile (use TWO separate sed calls)
+# 3. Patch the Dockerfile (use Python heredoc — sed can't match nested quotes)
 # Add libjpeg-dev for Pillow build
 sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
 
-# Fix build-time sed delimiter and skip mkdocs build (use Python — sed can't match nested quotes)
-python3 -c "
+# Fix build-time sed delimiter and skip mkdocs build (use Python heredoc — sed can't match nested quotes)
+python3 << 'PYEOF'
 with open('Dockerfile') as f:
     c = f.read()
 # Fix social-auth-core sed: use | delimiter to avoid / conflict with ] in replacement
 c = c.replace(
-    \"sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'\",
-    \"sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'\"
+    "sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'",
+    "sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'"
 )
 # Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
 c = c.replace(
-    'SECRET_KEY=\"dummyKeyWithMinimumLength-------------------------\" /opt/netbox/venv/bin/python -m mkdocs build',
-    'echo \"Skipping mkdocs build (incompatible with Python 3.12)\" #'
+    'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
+    "echo 'Skipping mkdocs build (incompatible with Python 3.12)' #"
 )
 with open('Dockerfile', 'w') as f:
     f.write(c)
-"
+PYEOF
 
 # 4. Remove hard pins from NetBox source requirements (Python 3.12 compatibility)
 sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
@@ -324,11 +324,20 @@ sed -i '/^Pillow==/d' .netbox/requirements.txt
 
 The upstream Dockerfile sed creates `social-auth-core[[all]]` instead of `social-auth-core[all]`.
 
-**Fix:** Patch the Dockerfile sed command (use TWO separate sed calls):
+**Fix:** Patch the Dockerfile sed command using a Python heredoc:
 
 ```bash
 cd netbox-docker
-sed -i -e 's|social-auth-core/social-auth-core\\\[all\\\]|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g' Dockerfile
+python3 << 'PYEOF'
+with open('Dockerfile') as f:
+    c = f.read()
+c = c.replace(
+    "sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'",
+    "sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'"
+)
+with open('Dockerfile', 'w') as f:
+    f.write(c)
+PYEOF
 ```
 
 ### podman build fails with `lxml==4.6.5` build error
@@ -414,7 +423,7 @@ sed -i '/^PyYAML==/d' .netbox/requirements.txt
 ```
 
 ### podman build fails with `social-auth-core[all][openidconnect]`
-The upstream Dockerfile's sed command creates double brackets when `requirements.txt` already has `social-auth-core[openidconnect]` (NetBox 3.4.x and newer). The build scripts handle this automatically. For manual builds, the sed patch above (`social-auth-core\[*\]/social-auth-core[all]`) replaces any existing extras bracket with `[all]`.
+The upstream Dockerfile's sed command creates double brackets when `requirements.txt` already has `social-auth-core[openidconnect]` (NetBox 3.4.x and newer). The build scripts handle this automatically. For manual builds, use the Python heredoc patch shown in [Step 3](#3-patch-the-dockerfile-use-two-separate-sed-calls) or the [Troubleshooting section above](#podman-build-fails-with-social-auth-core-double-brackets).
 
 ---
 
