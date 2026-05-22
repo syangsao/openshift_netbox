@@ -147,7 +147,7 @@ fi
 # Remove the social-auth-core version pin so uv resolves to 4.4.0+ (supports lxml 5.x).
 sed -i '/^--no-binary lxml/d' requirements-container.txt
 sed -i '/^--no-binary xmlsec/d' requirements-container.txt
-sed -i '/^social-auth-core\[*\]==/d' .netbox/requirements.txt
+sed -i '/^social-auth-core/d' .netbox/requirements.txt
 echo "lxml>=5.0.0" >> requirements-container.txt
 echo "   ✅ Removed --no-binary flags, social-auth-core pin + pinned lxml>=5.0.0 (Python 3.12 wheels)"
 
@@ -163,7 +163,7 @@ echo "   ✅ jsonschema pin preserved (Python 3.10 compatible)"
 if grep -q "lxml>=5.0.0" requirements-container.txt; then
   echo "   ✅ lxml>=5.0.0 pinned (Python 3.12 wheels)"
 fi
-if ! grep -q "^social-auth-core\[*\]==" .netbox/requirements.txt; then
+if ! grep -q "^social-auth-core" .netbox/requirements.txt; then
   echo "   ✅ social-auth-core pin removed (lxml compatibility)"
 fi
 
