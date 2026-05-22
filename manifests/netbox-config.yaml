@@ -12,8 +12,14 @@ data:
     # ---------------------------------------------------------------------------
     # ALLOWED_HOSTS
     # ---------------------------------------------------------------------------
-    # Set to ['*'] for development, or list specific hostnames in production.
     ALLOWED_HOSTS = ['*']
+
+    # ---------------------------------------------------------------------------
+    # STATIC FILES - WhiteNoise compatibility
+    # ---------------------------------------------------------------------------
+    # WhiteNoise WSGI wrapper serves files at root-relative paths.
+    # Setting STATIC_URL to "/" makes templates reference files without /static/ prefix.
+    STATIC_URL = "/"
 
     # ---------------------------------------------------------------------------
     # DATABASE
@@ -39,12 +45,12 @@ data:
             'CONN_MAX_AGE': int(os.environ.get('REDIS_CONN_MAX_AGE', 300)),
             'SSL': os.environ.get('REDIS_SSL', 'false').lower() == 'true',
         },
-        'config': {
+        'caching': {
             'HOST': os.environ.get('REDIS_CACHE_HOST', 'netbox-redis-cache'),
             'PORT': int(os.environ.get('REDIS_CACHE_PORT', 6379)),
             'PASSWORD': os.environ.get('REDIS_CACHE_PASSWORD', ''),
             'DATABASE': 1,
-            'CONN_MAX_AGE': int(os.environ.get('REDIS_CONN_MAX_AGE', 300)),
+            'CONN_MAX_AGE': int(os.environ.get('REDIS_CACHE_CONN_MAX_AGE', 300)),
             'SSL': os.environ.get('REDIS_CACHE_SSL', 'false').lower() == 'true',
         }
     }
@@ -75,6 +81,6 @@ data:
     }
 
     # ---------------------------------------------------------------------------
-    # LOGGING (optional - set LOGLEVEL to enable)
+    # LOGGING (optional)
     # ---------------------------------------------------------------------------
     # LOGLEVEL = os.environ.get('LOGLEVEL', 'INFO')

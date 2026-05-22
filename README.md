@@ -49,6 +49,41 @@ export NETBOX_VERSION=4.3.0
 export REGISTRY_ORG=your-registry-org
 ```
 
+> **⚠️ NetBox 3.4.x Compatibility Note**: NetBox 3.4.x requires Django 4.1 which is **incompatible with Python 3.12** (Ubuntu 24.04). If deploying NetBox 3.4.x, use **Ubuntu 22.04** as the base image:
+>
+> ```bash
+> export BASE_IMAGE="docker.io/ubuntu:22.04"
+> ```
+>
+> The `build-and-push.sh` script defaults to Ubuntu 22.04. Also remove the `unit` package references from the Dockerfile (replace with `nginx`) since `unit` packages are Ubuntu 24.04-only.
+>
+> For NetBox 4.x+, Ubuntu 24.04 works without issues.
+
+### Python / Django / Ubuntu Compatibility Matrix
+
+| Base Image | Python | Django Required | NetBox Versions | Patches Needed |
+|---|---|---|---|---|
+| **Ubuntu 24.04** | 3.12 | ≥ 4.2 | 4.3+ (no patches) | None for 4.3+ |
+| **Ubuntu 24.04** | 3.12 | ≥ 4.2 | 3.4.x — **not compatible** | Django 4.1 does not support Python 3.12 |
+| **Ubuntu 22.04** | 3.10 | 4.0 — 4.2 | 3.4.x, 4.0 — 4.3 | Minimal patches (see below) |
+
+**Why this matters:** Each Ubuntu release ships a different Python version, and Django dropped support for older Python versions in each major release. NetBox pins Django versions, so the chain is: **Ubuntu → Python → Django → NetBox**.
+
+**Key dependency conflicts by Python version:**
+
+| Package | Python 3.10 (Ubuntu 22.04) | Python 3.12 (Ubuntu 24.04) |
+|---|---|---|
+| **Django** | 4.0 — 4.2 ✓ | Requires ≥ 4.2 (3.2/4.0/4.1 do NOT support 3.12) |
+| **sentry-sdk** | Pin `==1.11.1` works | Pin conflicts with `sentry-sdk[django]>=2.x` — **remove pin** |
+| **PyYAML** | Pin `==6.0` builds OK | `cython_sources` attr error — **remove pin**, use ≥ 6.0.2 |
+| **Pillow** | Pin works | Source build needs `libjpeg-dev` — **remove pin + add header** |
+| **jsonschema** | Pin `==3.2.0` works | 3.2.0 incompatible with 3.12 — **remove pin**, use ≥ 4.0 |
+| **django-auth-ldap** | `==5.2.0` requires Django ≥ 4.2 | Same — use `==4.8.0` when Django < 4.2 |
+| **lxml** | `--no-binary` builds OK | Cython API changed — **remove `--no-binary`**, pin `>=5.0.0` |
+| **social-auth-core** | sed bracket handling OK | Same issue — needs pipe-delimiter fix in Dockerfile sed |
+
+**Rule of thumb:** If `NETBOX_VERSION < 4.3`, always use **Ubuntu 22.04** as the base image. The `build-and-push.sh` script handles this automatically.
+
 ### Manual Build Steps
 
 ```bash
