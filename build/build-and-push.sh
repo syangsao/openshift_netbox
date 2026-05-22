@@ -85,12 +85,7 @@ for i, line in enumerate(lines):
     # Skip unit state directory creation
     if '/opt/unit/' in line:
         continue
-    # Fix social-auth-core sed: use | delimiter to avoid / conflict with ] in replacement
-    if 's/social-auth-core/social-auth-core\\[all\\]/g' in line:
-        line = line.replace(
-            "sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'",
-            "sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'"
-        )
+    # Leave the social-auth-core sed as-is - we already removed the pin from requirements.txt
     # Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
     if '-m mkdocs build' in line:
         line = line.replace(
@@ -161,11 +156,7 @@ echo "🔍 Verifying patches..."
 if grep -q "libjpeg-dev" Dockerfile; then
   echo "   ✅ libjpeg-dev added for Pillow build"
 fi
-if grep "social-auth-core" Dockerfile | grep -q "\[\^]]"; then
-  echo "   ✅ social-auth-core: fixed bracket handling"
-else
-  echo "   ⚠️  social-auth-core: pattern may not have been updated"
-fi
+# social-auth-core sed left as-is in Dockerfile (pin removed from requirements.txt)
 # Django and jsonschema pins are preserved for Ubuntu 22.04 (Python 3.10 compatible)
 echo "   ✅ Django pin preserved (Python 3.10 compatible)"
 echo "   ✅ jsonschema pin preserved (Python 3.10 compatible)"
