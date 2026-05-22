@@ -49,13 +49,13 @@ export NETBOX_VERSION=4.3.0
 export REGISTRY_ORG=your-registry-org
 ```
 
-> **⚠️ NetBox 3.4.x Compatibility Note**: NetBox 3.4.x requires Django 4.1 which is **incompatible with Python 3.12** (Ubuntu 24.04). If deploying NetBox 3.4.x, use **Ubuntu 22.04** as the base image:
+> **⚠️ NetBox 3.4.x Compatibility Note**: NetBox 3.4.x pins **Django 3.2.x** which is **incompatible with Python 3.12** (Ubuntu 24.04). Additionally, `django-filter` in NetBox 3.4.x requires `django.utils.itercompat` which was removed in Django 4.0 — so even upgrading Django won't fix it. If deploying NetBox 3.4.x, use **Ubuntu 22.04** as the base image:
 >
 > ```bash
 > export BASE_IMAGE="docker.io/ubuntu:22.04"
 > ```
 >
-> The `build-and-push.sh` script defaults to Ubuntu 22.04. Also remove the `unit` package references from the Dockerfile (replace with `nginx`) since `unit` packages are Ubuntu 24.04-only.
+> The `build-and-push.sh` script defaults to Ubuntu 22.04 and preserves the Django pin. Also remove the `unit` package references from the Dockerfile (replace with `nginx`) since `unit` packages are Ubuntu 24.04-only.
 >
 > For NetBox 4.x+, Ubuntu 24.04 works without issues.
 
@@ -64,8 +64,8 @@ export REGISTRY_ORG=your-registry-org
 | Base Image | Python | Django Required | NetBox Versions | Patches Needed |
 |---|---|---|---|---|
 | **Ubuntu 24.04** | 3.12 | ≥ 4.2 | 4.3+ (no patches) | None for 4.3+ |
-| **Ubuntu 24.04** | 3.12 | ≥ 4.2 | 3.4.x — **not compatible** | Django 4.1 does not support Python 3.12 |
-| **Ubuntu 22.04** | 3.10 | 4.0 — 4.2 | 3.4.x, 4.0 — 4.3 | Minimal patches (see below) |
+| **Ubuntu 24.04** | 3.12 | ≥ 4.2 | 3.4.x — **not compatible** | Django 3.2.x does not support Python 3.12 + django-filter breaks with Django 4.0+ |
+| **Ubuntu 22.04** | 3.10 | 3.2 — 4.2 | 3.4.x, 4.0 — 4.3 | Minimal patches (see below) |
 
 **Why this matters:** Each Ubuntu release ships a different Python version, and Django dropped support for older Python versions in each major release. NetBox pins Django versions, so the chain is: **Ubuntu → Python → Django → NetBox**.
 
@@ -73,7 +73,7 @@ export REGISTRY_ORG=your-registry-org
 
 | Package | Python 3.10 (Ubuntu 22.04) | Python 3.12 (Ubuntu 24.04) |
 |---|---|---|
-| **Django** | 4.0 — 4.2 ✓ | Requires ≥ 4.2 (3.2/4.0/4.1 do NOT support 3.12) |
+| **Django** | 3.2 — 4.2 ✓ | Requires ≥ 4.2 (3.2/4.0/4.1 do NOT support 3.12) |
 | **sentry-sdk** | Pin `==1.11.1` works | Pin conflicts with `sentry-sdk[django]>=2.x` — **remove pin** |
 | **PyYAML** | Pin `==6.0` builds OK | `cython_sources` attr error — **remove pin**, use ≥ 6.0.2 |
 | **Pillow** | Pin works | Source build needs `libjpeg-dev` — **remove pin + add header** |
@@ -126,6 +126,8 @@ PYEOF
 sed -i '/^sentry-sdk==/d' .netbox/requirements.txt
 sed -i '/^PyYAML==/d' .netbox/requirements.txt
 sed -i '/^Pillow==/d' .netbox/requirements.txt
+# ⚠️ Django: DO NOT remove this pin for NetBox 3.x — django-filter requires
+# django.utils.itercompat (removed in Django 4.0). Only remove for NetBox 4.3+
 sed -i '/^Django==/d' .netbox/requirements.txt
 sed -i '/^jsonschema==/d' .netbox/requirements.txt
 sed -i '/^social-auth-core\[.*\]==/d' .netbox/requirements.txt
@@ -142,7 +144,10 @@ echo "lxml>=5.0.0" >> requirements-container.txt
 grep "libjpeg-dev" Dockerfile
 grep "social-auth-core\|[^]]*\|/social-auth-core\[all\]" Dockerfile  # should show pipe delimiters
 grep "Skipping mkdocs" Dockerfile  # should exist
-grep -E "^(sentry-sdk|PyYAML|Pillow|Django|jsonschema)==[^ ]" .netbox/requirements.txt || echo "All pins removed ✓"
+grep -E "^(sentry-sdk|PyYAML|Pillow|jsonschema)==[^ ]" .netbox/requirements.txt || echo "Pins removed ✓"
+# For NetBox 4.x+: Django pin should be removed
+# For NetBox 3.x: Django pin should be kept (do not run the sed command above)
+grep "Django==" .netbox/requirements.txt && echo "   ✅ Django pin kept (NetBox 3.x)" || echo "   ✅ Django pin removed (NetBox 4.x+)"
 grep "lxml>=5.0.0" requirements-container.txt  # should exist
 grep "^--no-binary" requirements-container.txt || echo "--no-binary removed ✓"
 
@@ -385,6 +390,20 @@ oc logs <netbox-pod> -n netbox -c netbox
 oc logs <netbox-pod> -n netbox -c netbox-worker
 ```
 Common causes: wrong DB password, invalid SECRET_KEY format, or DB not ready.
+
+### Pod crashes with `ModuleNotFoundError: No module named 'django.utils.itercompat'`
+
+```
+ModuleNotFoundError: No module named 'django.utils.itercompat'
+```
+
+**Cause:** The image was built with Django 4.x but NetBox 3.4.x's `django-filter`
+requires `django.utils.itercompat` which was removed in Django 4.0. This happens
+when the build script removes the Django pin, letting uv resolve to Django 4.x.
+
+**Fix:** Rebuild the image using `build-and-push.sh` (Ubuntu 22.04) which preserves
+the Django pin. For Ubuntu 24.04, NetBox 3.x is not compatible — see the
+[compatibility note](#set-build-variables).
 
 ### Readiness probe failing
 The probe checks `/login/` on port 8080 with a 90-second initial delay. If the first startup takes longer (large migrations), increase `initialDelaySeconds` in `manifests/netbox.yaml`.

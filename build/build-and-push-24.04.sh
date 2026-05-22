@@ -22,6 +22,20 @@ NETBOX_SRC_VERSION="${NETBOX_SRC_VERSION:-${NETBOX_VERSION}}"
 
 IMAGE="${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}"
 
+# Check for NetBox 3.x incompatibility with Ubuntu 24.04
+MAJOR_VERSION=$(echo "${NETBOX_VERSION}" | cut -d. -f1)
+if [ "${MAJOR_VERSION}" = "3" ]; then
+  echo "❌ ERROR: NetBox 3.x is NOT compatible with Ubuntu 24.04 (Python 3.12)"
+  echo ""
+  echo "   NetBox 3.x pins Django 3.2.x, which does NOT support Python 3.12."
+  echo "   Even with --frozen, the dependency resolution produces Django 4.x"
+  echo "   which breaks django-filter (requires django.utils.itercompat)."
+  echo ""
+  echo "   Please use build-and-push.sh (Ubuntu 22.04) instead:"
+  echo "   ./build-and-push.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}"
+  exit 1
+fi
+
 echo "🔧 Building NetBox ${NETBOX_VERSION} (Ubuntu 24.04) -> ${IMAGE}"
 
 # Clone netbox-docker if needed
