@@ -66,30 +66,38 @@ with open('Dockerfile') as f:
     lines = f.readlines()
 
 out = []
-skip_next = 0
+comment_next = False
 for i, line in enumerate(lines):
-    if skip_next > 0:
-        skip_next -= 1
+    if comment_next:
+        # Comment out the --config-file line but preserve the trailing backslash
+        out.append('#' + line)
+        comment_next = False
         continue
+    # Skip unit apt source and GPG key (Ubuntu 24.04-only)
     if 'unit.list' in line or 'nginx-keyring.gpg' in line:
         continue
+    # Skip unit package installations (Ubuntu 24.04-only)
     if 'unit-python3' in line or line.strip().startswith('unit='):
         continue
+    # Skip unit config copy
     if 'nginx-unit.json' in line:
         continue
+    # Skip unit state directory creation
     if '/opt/unit/' in line:
         continue
+    # Fix social-auth-core sed: use | delimiter to avoid / conflict with ] in replacement
     if 's/social-auth-core/social-auth-core\\[all\\]/g' in line:
         line = line.replace(
             "sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'",
             "sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'"
         )
+    # Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
     if '-m mkdocs build' in line:
         line = line.replace(
             'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
             'echo "Skipping mkdocs build"'
         )
-        skip_next = 1  # skip the --config-file continuation line
+        comment_next = True  # comment out the --config-file line, keep continuation
     out.append(line)
 
 with open('Dockerfile', 'w') as f:
@@ -144,7 +152,7 @@ fi
 # Remove the social-auth-core version pin so uv resolves to 4.4.0+ (supports lxml 5.x).
 sed -i '/^--no-binary lxml/d' requirements-container.txt
 sed -i '/^--no-binary xmlsec/d' requirements-container.txt
-sed -i '/^social-auth-core\[.*\]==/d' .netbox/requirements.txt
+sed -i '/^social-auth-core\[*\]==/d' .netbox/requirements.txt
 echo "lxml>=5.0.0" >> requirements-container.txt
 echo "   ✅ Removed --no-binary flags, social-auth-core pin + pinned lxml>=5.0.0 (Python 3.12 wheels)"
 
@@ -164,7 +172,7 @@ echo "   ✅ jsonschema pin preserved (Python 3.10 compatible)"
 if grep -q "lxml>=5.0.0" requirements-container.txt; then
   echo "   ✅ lxml>=5.0.0 pinned (Python 3.12 wheels)"
 fi
-if ! grep -q "^social-auth-core\[.*\]==" .netbox/requirements.txt; then
+if ! grep -q "^social-auth-core\[*\]==" .netbox/requirements.txt; then
   echo "   ✅ social-auth-core pin removed (lxml compatibility)"
 fi
 
