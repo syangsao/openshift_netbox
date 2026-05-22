@@ -59,22 +59,40 @@ fi
 echo "🔨 Patching Dockerfile for compatibility..."
 sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
 
-# Fix build-time sed delimiter and skip mkdocs build (use Python heredoc — sed can't match nested quotes)
+# Fix build-time sed delimiter, skip mkdocs, and remove Ubuntu 24.04-only packages
+# (use Python heredoc — sed can't match nested quotes)
 python3 << 'PYEOF'
 with open('Dockerfile') as f:
-    c = f.read()
-# Fix social-auth-core sed: use | delimiter to avoid / conflict with ] in replacement
-c = c.replace(
-    "sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'",
-    "sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'"
-)
-# Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
-c = c.replace(
-    'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
-    "echo 'Skipping mkdocs build (incompatible with Python 3.12)' #"
-)
+    lines = f.readlines()
+
+out = []
+skip_next = 0
+for i, line in enumerate(lines):
+    # Skip unit apt source and GPG key (Ubuntu 24.04-only)
+    if 'unit.list' in line or 'nginx-keyring.gpg' in line:
+        continue
+    # Skip unit package installations (Ubuntu 24.04-only)
+    if 'unit-python3' in line or (line.strip().startswith('unit=') ):
+        continue
+    # Skip unit config copy
+    if 'nginx-unit.json' in line:
+        continue
+    # Skip unit state directory creation
+    if '/opt/unit/' in line:
+        continue
+    # Fix social-auth-core sed: use | delimiter to avoid / conflict with ] in replacement
+    if 's/social-auth-core/social-auth-core\\[all\\]/g' in line:
+        line = line.replace(
+            "sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'",
+            "sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'"
+        )
+    # Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
+    if '/opt/netbox/venv/bin/python -m mkdocs build' in line:
+        line = "echo 'Skipping mkdocs build (incompatible with Python 3.12)' #" + line.split('/opt/netbox')[1] if '/opt/netbox' in line else line
+    out.append(line)
+
 with open('Dockerfile', 'w') as f:
-    f.write(c)
+    f.writelines(out)
 PYEOF
 
 # Fix dependency conflicts between netbox-docker and NetBox source
