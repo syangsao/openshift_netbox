@@ -4,6 +4,8 @@ A step-by-step guide to build the [NetBox Docker image](https://github.com/netbo
 
 ## Architecture
 
+**NetBox 4.3+ (Granian):**
+
 ```
 Route (TLS/edge)
     │
@@ -11,6 +13,22 @@ Route (TLS/edge)
 NetBox Service (port 8080)
     │
     ├── NetBox App (Granian, 4 workers)
+    ├── NetBox Worker (RQ sidecar)
+    │
+    ├── PostgreSQL 18 (persistent)
+    ├── Redis Sessions (Valkey 9, persistent)
+    └── Redis Cache (Valkey 9, persistent)
+```
+
+**NetBox 3.4.x (Nginx Unit):**
+
+```
+Route (TLS/edge)
+    │
+    ▼
+NetBox Service (port 8080)
+    │
+    ├── NetBox App (Nginx Unit)
     ├── NetBox Worker (RQ sidecar)
     │
     ├── PostgreSQL 18 (persistent)
@@ -49,23 +67,19 @@ export NETBOX_VERSION=4.3.0
 export REGISTRY_ORG=your-registry-org
 ```
 
-> **⚠️ NetBox 3.4.x Compatibility Note**: NetBox 3.4.x requires Django 4.1 which is **incompatible with Python 3.12** (Ubuntu 24.04). If deploying NetBox 3.4.x, use **Ubuntu 22.04** as the base image:
+> **⚠️ NetBox 3.4.x Compatibility Note**: NetBox 3.4.x pins `Django==4.1.4` which does **not support Python 3.12** (Ubuntu 24.04). The fix is to **remove the Django pin** (Step 4 below) so uv resolves Django 4.2 LTS, which is compatible with Python 3.12. All the patches below handle this automatically.
 >
-> ```bash
-> export BASE_IMAGE="docker.io/ubuntu:22.04"
-> ```
->
-> The `build-and-push.sh` script defaults to Ubuntu 22.04. Also remove the `unit` package references from the Dockerfile (replace with `nginx`) since `unit` packages are Ubuntu 24.04-only.
->
-> For NetBox 4.x+, Ubuntu 24.04 works without issues.
+> **Do NOT use Ubuntu 22.04** for NetBox 3.4.x — the netbox-docker Dockerfile installs Nginx Unit packages (`unit-python3.12=1.34.2-1~noble`) that only exist in the Ubuntu 24.04 (noble) repos. On Ubuntu 22.04, `apt-get install unit` will fail.
+
+> For NetBox 4.3+, Ubuntu 24.04 works with no patches needed.
 
 ### Python / Django / Ubuntu Compatibility Matrix
 
 | Base Image | Python | Django Required | NetBox Versions | Patches Needed |
 |---|---|---|---|---|
-| **Ubuntu 24.04** | 3.12 | ≥ 4.2 | 4.3+ (no patches) | None for 4.3+ |
-| **Ubuntu 24.04** | 3.12 | ≥ 4.2 | 3.4.x — **not compatible** | Django 4.1 does not support Python 3.12 |
-| **Ubuntu 22.04** | 3.10 | 4.0 — 4.2 | 3.4.x, 4.0 — 4.3 | Minimal patches (see below) |
+| **Ubuntu 24.04** | 3.12 | ≥ 4.2 | 4.3+ (no patches) | None |
+| **Ubuntu 24.04** | 3.12 | ≥ 4.2 | 3.4.x | Remove Django pin + dependency fixes (see below) |
+| **Ubuntu 22.04** | 3.10 | 4.0 — 4.2 | ❌ **not recommended** | Nginx Unit packages require Ubuntu 24.04 repos — Dockerfile won't build |
 
 **Why this matters:** Each Ubuntu release ships a different Python version, and Django dropped support for older Python versions in each major release. NetBox pins Django versions, so the chain is: **Ubuntu → Python → Django → NetBox**.
 
@@ -82,7 +96,7 @@ export REGISTRY_ORG=your-registry-org
 | **lxml** | `--no-binary` builds OK | Cython API changed — **remove `--no-binary`**, pin `>=5.0.0` |
 | **social-auth-core** | sed bracket handling OK | Same issue — needs pipe-delimiter fix in Dockerfile sed |
 
-**Rule of thumb:** If `NETBOX_VERSION < 4.3`, always use **Ubuntu 22.04** as the base image. The `build-and-push.sh` script handles this automatically.
+**Rule of thumb:** Always use **Ubuntu 24.04** as the base image. For NetBox 3.4.x, the only additional step is removing the Django pin so uv resolves Django 4.2 LTS. The `build-and-push-24.04.sh` script handles all patches automatically.
 
 ### Manual Build Steps
 
@@ -92,7 +106,7 @@ cd netbox-docker
 
 # 1. Checkout the netbox-docker version
 git fetch --tags
-git tag -l '5.*' | sort -V | tail -20   # List recent tags
+git tag -l | sort -V | tail -20   # List recent tags
 git checkout ${NETBOX_VERSION}
 
 # 2. Clone the NetBox source code (required — Dockerfile needs it)
@@ -139,12 +153,13 @@ sed -i '/^--no-binary xmlsec/d' requirements-container.txt
 echo "lxml>=5.0.0" >> requirements-container.txt
 
 # 7. Verify the patches took effect
-grep "libjpeg-dev" Dockerfile
-grep "social-auth-core\|[^]]*\|/social-auth-core\[all\]" Dockerfile  # should show pipe delimiters
+grep "libjpeg-dev" Dockerfile  # should show libjpeg-dev
+grep "social-auth-core" Dockerfile | grep -q "|" && echo "social-auth-core sed fix ✓" || echo "⚠️ social-auth-core fix NOT applied"
 grep "Skipping mkdocs" Dockerfile  # should exist
-grep -E "^(sentry-sdk|PyYAML|Pillow|Django|jsonschema)==[^ ]" .netbox/requirements.txt || echo "All pins removed ✓"
+grep -E "^(sentry-sdk|PyYAML|Pillow|Django|jsonschema|social-auth-core)==[^ ]" .netbox/requirements.txt || echo "All hard pins removed ✓"
 grep "lxml>=5.0.0" requirements-container.txt  # should exist
-grep "^--no-binary" requirements-container.txt || echo "--no-binary removed ✓"
+grep "lxml>=4.8.0" requirements-container.txt || echo "lxml>=5.0.0 added ✓"
+grep "^--no-binary" requirements-container.txt || echo "--no-binary flags removed ✓"
 
 # 8. Build (--no-cache prevents podman from using stale cached layers)
 podman build \
@@ -173,12 +188,14 @@ podman push ${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}
 Or use the convenience scripts which handle everything automatically:
 
 ```bash
-# Ubuntu 24.04 base (recommended)
+# Ubuntu 24.04 base (recommended for all versions)
 ./build/build-and-push-24.04.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
 
-# Ubuntu 22.04 base
+# Ubuntu 22.04 base (only works for versions that don't use Nginx Unit)
 ./build/build-and-push.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
 ```
+
+> ⚠️ For NetBox 3.4.x, **only** `build-and-push-24.04.sh` will work. The `build-and-push.sh` script uses Ubuntu 22.04, but the netbox-docker 3.4.1 Dockerfile installs Nginx Unit packages that require Ubuntu 24.04 repos.
 
 ### Build Variables Reference
 
@@ -354,8 +371,8 @@ openshift_netbox/
 ├── .ggignore                    # GitGuardian ignore (placeholder secrets)
 ├── README.md                    # This guide
 ├── build/
-│   ├── build-and-push.sh        # Build with Ubuntu 22.04 base
-│   └── build-and-push-24.04.sh  # Build with Ubuntu 24.04 base (patches Dockerfile)
+│   ├── build-and-push.sh        # Build with Ubuntu 22.04 base (may not work with 3.4.x)
+│   └── build-and-push-24.04.sh  # Build with Ubuntu 24.04 base (recommended, works with all versions)
 └── manifests/
     ├── netbox-config.yaml       # Configuration ConfigMap
     ├── netbox-env.yaml          # Environment variables Secret (placeholders)
@@ -439,31 +456,23 @@ sed -i '/^--no-binary xmlsec/d' requirements-container.txt
 
 ### podman build fails with dependency conflicts
 
-See the [Manual Build Steps](#manual-build-steps) section for all required patches.
+See the [Manual Build Steps](#manual-build-steps) section for all required patches. The patches address:
 
-**Quick fix** — use the convenience script which handles everything:
+1. **social-auth-core** — Dockerfile sed creates double brackets (`[[all]]`)
+2. **Django pin** — `Django==4.1.4` incompatible with Python 3.12
+3. **sentry-sdk pin** — conflicts with `sentry-sdk[django]>=2.x`
+4. **PyYAML pin** — `cython_sources` build error on Python 3.12
+5. **Pillow pin** — needs `libjpeg-dev` header
+6. **jsonschema pin** — `distutils` removed in Python 3.12
+7. **django-auth-ldap** — `==5.2.0` requires Django ≥ 4.2
+8. **lxml** — `--no-binary` forces source build with Cython 3.8 APIs
+9. **social-auth-core pin** — pins `lxml<4.7` which has no Python 3.12 wheel
+
+**Easiest fix** — use the convenience script which handles everything:
 
 ```bash
-cd netbox-docker
-git checkout v${NETBOX_VERSION}
-
-git clone --depth 1 --branch "v${NETBOX_VERSION}" \
-  https://github.com/netbox-community/netbox.git .netbox
-
-# Build (--no-cache is critical to avoid stale cached layers)
-podman build \
-  --pull \
-  --no-cache \
-  --target main \
-  -f Dockerfile \
-  -t "${REGISTRY}/${REGISTRY_ORG}/netbox:${NETBOX_VERSION}" \
-  --build-arg "FROM=docker.io/ubuntu:24.04" \
-  --build-arg "NETBOX_PATH=.netbox" \
-  .
+./build/build-and-push-24.04.sh ${NETBOX_VERSION} ${REGISTRY_ORG} ${REGISTRY}
 ```
-
-> Note: netbox-docker 3.4.1+ already uses correct `libxmlsec1` and `libxmlsec1-openssl`
-> package names — no renaming patches needed for these versions.
 
 ### podman build fails with `sentry-sdk` version conflict
 ```
