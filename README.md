@@ -200,13 +200,15 @@ oc new-project netbox
 
 ### Create an ImagePullSecret (if registry is private)
 
-**Option A: Apply the pre-made manifest** (recommended)
+**Option A: Use the template manifest** (recommended)
+
+Edit `manifests/netbox-image-pull-secret.yaml` and replace the placeholder `.dockerconfigjson` value with your actual registry credentials, then apply:
 
 ```bash
 oc apply -f manifests/netbox-image-pull-secret.yaml
 ```
 
-The manifest `manifests/netbox-image-pull-secret.yaml` is pre-configured with your internal Quay credentials.
+> ⚠️ The manifest contains a placeholder value — you **must** replace it before deploying.
 
 **Option B: Create from scratch**
 
@@ -323,14 +325,15 @@ oc scale deployment netbox -n netbox --replicas=2
 
 ```
 openshift_netbox/
+├── .ggignore                    # GitGuardian ignore (placeholder secrets)
 ├── README.md                    # This guide
 ├── build/
 │   ├── build-and-push.sh        # Build with Ubuntu 22.04 base
 │   └── build-and-push-24.04.sh  # Build with Ubuntu 24.04 base (patches Dockerfile)
 └── manifests/
     ├── netbox-config.yaml       # Configuration ConfigMap
-    ├── netbox-env.yaml          # Environment variables Secret
-    ├── netbox-image-pull-secret.yaml  # Image pull secret for private registry
+    ├── netbox-env.yaml          # Environment variables Secret (placeholders)
+    ├── netbox-image-pull-secret.yaml  # Image pull secret template (placeholder)
     ├── postgres.yaml            # PostgreSQL deployment + PVC
     ├── redis.yaml               # Redis session store + PVC
     ├── redis-cache.yaml         # Redis cache + PVC
