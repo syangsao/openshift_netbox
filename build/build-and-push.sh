@@ -101,18 +101,17 @@ if grep -q "^Pillow==" .netbox/requirements.txt; then
   echo "   ✅ Removed Pillow hard pin from NetBox source"
 fi
 
-# Fix Django: pinned 4.1.4 does not support Python 3.12 (Ubuntu 24.04).
-# Django 4.2 LTS is the first version with Python 3.12 support.
-if grep -q "^Django==" .netbox/requirements.txt; then
-  sed -i '/^Django==/d' .netbox/requirements.txt
-  echo "   ✅ Removed Django hard pin (need 4.2+ for Python 3.12)"
-fi
+# Django: keep the pinned version for Ubuntu 22.04 (Python 3.10).
+# Django 3.2.x / 4.0.x / 4.1.x all work fine with Python 3.10.
+# Only remove the pin when targeting Ubuntu 24.04 (Python 3.12).
+# IMPORTANT: For NetBox 3.x, removing the Django pin causes uv to resolve
+# Django 4.x, which breaks django-filter (requires django.utils.itercompat,
+# removed in Django 4.0). Always use Ubuntu 22.04 for NetBox 3.x.
+echo "   ✅ Django pin preserved (Python 3.10 compatible)"
 
-# Fix jsonschema: pinned 3.2.0 uses deprecated distutils removed in Python 3.12.
-if grep -q "^jsonschema==" .netbox/requirements.txt; then
-  sed -i '/^jsonschema==/d' .netbox/requirements.txt
-  echo "   ✅ Removed jsonschema hard pin (3.2.0 incompatible with Python 3.12)"
-fi
+# jsonschema: pinned 3.2.0 works fine with Python 3.10 (Ubuntu 22.04).
+# Only remove the pin when targeting Ubuntu 24.04 (Python 3.12).
+echo "   ✅ jsonschema pin preserved (Python 3.10 compatible)"
 
 # Fix django-auth-ldap: netbox-docker pins django-auth-ldap==5.2.0 which
 # requires django>=4.2. Downgrade to 4.8.0 (supports django>=3.2).
@@ -140,12 +139,9 @@ if grep "social-auth-core" Dockerfile | grep -q "\[\^]]"; then
 else
   echo "   ⚠️  social-auth-core: pattern may not have been updated"
 fi
-if ! grep -q "^Django==" .netbox/requirements.txt; then
-  echo "   ✅ Django pin removed (Python 3.12 compatibility)"
-fi
-if ! grep -q "^jsonschema==" .netbox/requirements.txt; then
-  echo "   ✅ jsonschema pin removed (Python 3.12 compatibility)"
-fi
+# Django and jsonschema pins are preserved for Ubuntu 22.04 (Python 3.10 compatible)
+echo "   ✅ Django pin preserved (Python 3.10 compatible)"
+echo "   ✅ jsonschema pin preserved (Python 3.10 compatible)"
 if grep -q "lxml>=5.0.0" requirements-container.txt; then
   echo "   ✅ lxml>=5.0.0 pinned (Python 3.12 wheels)"
 fi
