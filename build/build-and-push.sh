@@ -85,8 +85,11 @@ for i, line in enumerate(lines):
             "sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'"
         )
     if '-m mkdocs build' in line:
-        line = line.split('&&')[0].rstrip() + '&& echo "Skipping mkdocs build" \\\n'
-        skip_next = 1
+        line = line.replace(
+            'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
+            'echo "Skipping mkdocs build"'
+        )
+        skip_next = 1  # skip the --config-file continuation line
     out.append(line)
 
 with open('Dockerfile', 'w') as f:
