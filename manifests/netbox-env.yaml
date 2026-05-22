@@ -27,7 +27,7 @@ stringData:
 
   # --- Security ---
   # Generate with: python3 -c "import secrets; print(secrets.token_urlsafe(64))"
-  SECRET_KEY: "CHANGE-ME-generate-a-real-secret-key-here-min-50-chars"
+  SECRET_KEY: "REPLACE_WITH_64_CHAR_RANDOM_STRING_BEFORE_DEPLOYING"
 
   # --- Superuser (auto-created on first boot) ---
   # Set to "true" to skip creating a superuser (e.g., if using SSO)
