@@ -66,12 +66,10 @@ with open('Dockerfile') as f:
     lines = f.readlines()
 
 out = []
-comment_next = False
+skip_next = 0
 for i, line in enumerate(lines):
-    if comment_next:
-        # Comment out the --config-file line but preserve the trailing backslash
-        out.append('#' + line)
-        comment_next = False
+    if skip_next > 0:
+        skip_next -= 1
         continue
     # Skip unit apt source and GPG key (Ubuntu 24.04-only)
     if 'unit.list' in line or 'nginx-keyring.gpg' in line:
@@ -86,13 +84,13 @@ for i, line in enumerate(lines):
     if '/opt/unit/' in line:
         continue
     # Leave the social-auth-core sed as-is - we already removed the pin from requirements.txt
-    # Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
+    # Skip mkdocs build — replace with echo and skip the --config-file continuation
     if '-m mkdocs build' in line:
         line = line.replace(
             'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
             'echo "Skipping mkdocs build"'
         )
-        comment_next = True  # comment out the --config-file line, keep continuation
+        skip_next = 1  # skip the --config-file line
     out.append(line)
 
 with open('Dockerfile', 'w') as f:
