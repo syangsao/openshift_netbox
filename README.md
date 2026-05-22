@@ -305,6 +305,32 @@ Default admin credentials (from `netbox-env.yaml`):
 - **Username**: `admin`
 - **Password**: whatever you set for `SUPERUSER_PASSWORD`
 
+### Change the Admin Password
+
+If you've lost the admin password or want to change it after deployment:
+
+**Option A: Interactive (prompts for new password)**
+
+```bash
+POD=$(oc get pods -n netbox -l app=netbox -o jsonpath='{.items[0].metadata.name}')
+oc exec -it $POD -n netbox -c netbox -- python3 /opt/netbox/netbox/manage.py changepassword admin
+```
+
+**Option B: One-liner (set password without prompt)**
+
+```bash
+POD=$(oc get pods -n netbox -l app=netbox -o jsonpath='{.items[0].metadata.name}')
+oc exec $POD -n netbox -c netbox -- python3 -c "
+from django.contrib.auth.models import User
+u = User.objects.get(username='admin')
+u.set_password('YOUR_NEW_PASSWORD')
+u.save()
+print('Password changed successfully')
+"
+```
+
+> **Note:** The NetBox Docker image has `manage.py` at `/opt/netbox/netbox/manage.py` — not at the root. Running `python3 manage.py` without the full path will fail with `No such file or directory`.
+
 ### Scale the App
 
 To add more replicas of the app (worker stays at 1):
