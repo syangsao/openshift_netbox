@@ -1,0 +1,4 @@
+# GitGuardian ignore file
+# These files contain PLACEHOLDER values only — real secrets are generated at deploy time
+# via deploy-netbox.sh or manual oc apply.
+manifests/netbox-env.yaml

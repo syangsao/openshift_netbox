@@ -200,13 +200,15 @@ oc new-project netbox
 
 ### Create an ImagePullSecret (if registry is private)
 
-**Option A: Apply the pre-made manifest** (recommended)
+**Option A: Use the template manifest** (recommended)
+
+Edit `manifests/netbox-image-pull-secret.yaml` and replace the placeholder `.dockerconfigjson` value with your actual registry credentials, then apply:
 
 ```bash
 oc apply -f manifests/netbox-image-pull-secret.yaml
 ```
 
-The manifest `manifests/netbox-image-pull-secret.yaml` is pre-configured with your internal Quay credentials.
+> ⚠️ The manifest contains a placeholder value — you **must** replace it before deploying.
 
 **Option B: Create from scratch**
 
@@ -303,6 +305,30 @@ Default admin credentials (from `netbox-env.yaml`):
 - **Username**: `admin`
 - **Password**: whatever you set for `SUPERUSER_PASSWORD`
 
+### Change the Admin Password
+
+If you've lost the admin password or want to change it after deployment, you can reset it by exec-ing into the NetBox pod:
+
+```bash
+# Get the NetBox pod name
+POD=$(oc get pods -n netbox -l app=netbox -o jsonpath='{.items[0].metadata.name}')
+
+# Reset password interactively (you'll be prompted to type a new password)
+oc exec -it $POD -n netbox -c netbox -- python3 /opt/netbox/netbox/manage.py changepassword admin
+```
+
+Or set it in one command without the interactive prompt:
+
+```bash
+oc exec $POD -n netbox -c netbox -- python3 -c "
+from django.contrib.auth.models import User
+u = User.objects.get(username='admin')
+u.set_password('YOUR_NEW_PASSWORD')
+u.save()
+print('Password changed successfully')
+"
+```
+
 ### Scale the App
 
 To add more replicas of the app (worker stays at 1):
@@ -323,14 +349,15 @@ oc scale deployment netbox -n netbox --replicas=2
 
 ```
 openshift_netbox/
+├── .ggignore                    # GitGuardian ignore (placeholder secrets)
 ├── README.md                    # This guide
 ├── build/
 │   ├── build-and-push.sh        # Build with Ubuntu 22.04 base
 │   └── build-and-push-24.04.sh  # Build with Ubuntu 24.04 base (patches Dockerfile)
 └── manifests/
     ├── netbox-config.yaml       # Configuration ConfigMap
-    ├── netbox-env.yaml          # Environment variables Secret
-    ├── netbox-image-pull-secret.yaml  # Image pull secret for private registry
+    ├── netbox-env.yaml          # Environment variables Secret (placeholders)
+    ├── netbox-image-pull-secret.yaml  # Image pull secret template (placeholder)
     ├── postgres.yaml            # PostgreSQL deployment + PVC
     ├── redis.yaml               # Redis session store + PVC
     ├── redis-cache.yaml         # Redis cache + PVC
