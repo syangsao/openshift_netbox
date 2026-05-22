@@ -88,7 +88,7 @@ for i, line in enumerate(lines):
     if '-m mkdocs build' in line:
         line = line.replace(
             'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
-            'echo "Skipping mkdocs build"'
+            'echo "Skipping mkdocs build" \'
         )
         skip_next = 1  # skip the --config-file line
     out.append(line)
