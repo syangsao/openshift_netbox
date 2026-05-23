@@ -13,35 +13,62 @@ A step-by-step guide to build the [NetBox Docker image](https://github.com/netbo
 
 ## Quick Start — One-Command Install
 
-The `scripts/install.sh` script generates all manifests inline and deploys NetBox 3.4.1 with PostgreSQL, Redis, and a TLS route in a single command. No manual manifest editing required.
+The `scripts/install.sh` script pulls the NetBox community image from Docker Hub, pushes it to your Quay registry, and deploys everything on OpenShift in a single command.
+
+### Configuration
+
+Edit the variables at the top of `scripts/install.sh` to match your environment:
+
+```bash
+# NetBox version
+NETBOX_VERSION="3.4.1"
+
+# Quay registry
+QUAY_HOST="registry-quay-quay-enterprise.apps.luke.syangsao.net"
+QUAY_REPO="openshift/netbox"
+QUAY_USER="openshift+robot"
+QUAY_PASS="YOUR_ROBOT_TOKEN"
+
+# Admin password (default: admin)
+ADMIN_PASSWORD="admin"
+```
+
+Or override via CLI flags:
 
 ```bash
 ./scripts/install.sh \
-  --registry quay.io/YOUR_ORG/netbox:3.4.1 \
+  --netbox-version 3.4.1 \
+  --quay-host registry-quay-quay-enterprise.apps.luke.syangsao.net \
+  --quay-repo openshift/netbox \
+  --quay-user openshift+robot \
+  --quay-pass "YOUR_ROBOT_TOKEN" \
   --namespace netbox \
-  --pull-secret-server https://registry-quay-quay-enterprise.apps.luke.syangsao.net \
-  --pull-secret-user openshift+robot \
-  --pull-secret-pass "YOUR_ROBOT_TOKEN"
+  --admin-password admin
 ```
 
-The script will:
-1. Generate random credentials for the database, Redis, and secret key
-2. Create the namespace and all resources (Secret, ConfigMap, deployments, PVCs, route)
-3. Wait for each component to become ready
-4. Print the admin credentials and URL when complete
+### What the script does
+
+1. **Pulls** `netboxcommunity/netbox:latest-${VERSION}` from Docker Hub
+2. **Pushes** it to your Quay registry as `${QUAY_HOST}/${QUAY_REPO}:${VERSION}`
+3. **Creates** the namespace, image pull secret, credentials, ConfigMap
+4. **Deploys** PostgreSQL 18, Redis (sessions + cache), NetBox app + worker
+5. **Creates** a TLS edge route
+6. **Waits** for all components to become ready
+7. **Prints** the admin URL and credentials
 
 ### Install Script Options
 
 | Option | Description | Default |
 |---|---|---|
-| `--registry IMAGE` | Full NetBox image path (required) | — |
+| `--netbox-version VERSION` | NetBox version | `3.4.1` |
+| `--quay-host HOST` | Quay registry hostname | `registry-quay-quay-enterprise.apps.luke.syangsao.net` |
+| `--quay-repo REPO` | Quay repo path (e.g. `openshift/netbox`) | `openshift/netbox` |
+| `--quay-user USER` | Quay username | `openshift+robot` |
+| `--quay-pass PASS` | Quay password/token | (set in script) |
 | `--namespace NAME` | OpenShift namespace | `netbox` |
-| `--admin-password PASS` | Admin password (random if omitted) | random |
+| `--admin-password PASS` | Admin password | `admin` |
 | `--storage-class CLASS` | PVC storage class | `nfs-csidriver3` |
-| `--pull-secret-server URL` | Registry URL for image pull secret | — |
-| `--pull-secret-user USER` | Registry username for pull secret | — |
-| `--pull-secret-pass PASS` | Registry password for pull secret | — |
-| `--dry-run` | Generate manifests only, do not apply | false |
+| `--dry-run` | Show config only, do not deploy | false |
 
 ### What the script deploys
 
@@ -68,7 +95,7 @@ NetBox Service (port 8080)
 
   📍 URL:         https://netbox-netbox.apps.cluster.example.com
   👤 Username:    admin
-  🔑 Password:    xK9mP2vL8nQ4wR7jT1yF6hA3bS5cD0eG
+  🔑 Password:    admin
 
 ───────────────────────────────────────────────────────────
   Save the admin password — it won't be shown again!
