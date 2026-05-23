@@ -2,7 +2,48 @@
 
 A step-by-step guide to build the [NetBox Docker image](https://github.com/netbox-community/netbox-docker), push it to a container registry, and deploy it on OpenShift.
 
-## Architecture
+## Prerequisites
+
+- **Podman** installed (`podman build`/`podman push`)
+- **Container registry** account with a repository
+- **OpenShift** cluster access (`oc` CLI configured)
+- **Podman login** to registry: `podman login ${REGISTRY}`
+
+---
+
+## Quick Start — One-Command Install
+
+The `scripts/install.sh` script generates all manifests inline and deploys NetBox 3.4.1 with PostgreSQL, Redis, and a TLS route in a single command. No manual manifest editing required.
+
+```bash
+./scripts/install.sh \
+  --registry quay.io/YOUR_ORG/netbox:3.4.1 \
+  --namespace netbox \
+  --pull-secret-server https://registry-quay-quay-enterprise.apps.luke.syangsao.net \
+  --pull-secret-user openshift+robot \
+  --pull-secret-pass "YOUR_ROBOT_TOKEN"
+```
+
+The script will:
+1. Generate random credentials for the database, Redis, and secret key
+2. Create the namespace and all resources (Secret, ConfigMap, deployments, PVCs, route)
+3. Wait for each component to become ready
+4. Print the admin credentials and URL when complete
+
+### Install Script Options
+
+| Option | Description | Default |
+|---|---|---|
+| `--registry IMAGE` | Full NetBox image path (required) | — |
+| `--namespace NAME` | OpenShift namespace | `netbox` |
+| `--admin-password PASS` | Admin password (random if omitted) | random |
+| `--storage-class CLASS` | PVC storage class | `nfs-csidriver3` |
+| `--pull-secret-server URL` | Registry URL for image pull secret | — |
+| `--pull-secret-user USER` | Registry username for pull secret | — |
+| `--pull-secret-pass PASS` | Registry password for pull secret | — |
+| `--dry-run` | Generate manifests only, do not apply | false |
+
+### What the script deploys
 
 ```
 Route (TLS/edge)
@@ -13,17 +54,26 @@ NetBox Service (port 8080)
     ├── NetBox App (Granian, 4 workers)
     ├── NetBox Worker (RQ sidecar)
     │
-    ├── PostgreSQL 18 (persistent)
-    ├── Redis Sessions (Valkey 9, persistent)
-    └── Redis Cache (Valkey 9, persistent)
+    ├── PostgreSQL 18 (persistent, 10Gi)
+    ├── Redis Sessions (Valkey 9, persistent, 5Gi)
+    └── Redis Cache (Valkey 9, persistent, 5Gi)
 ```
 
-## Prerequisites
+### Output on success
 
-- **Podman** installed (`podman build`/`podman push`)
-- **Container registry** account with a repository
-- **OpenShift** cluster access (`oc` CLI configured)
-- **Podman login** to registry: `podman login ${REGISTRY}`
+```
+═══════════════════════════════════════════════════════════
+  ✅ DEPLOYMENT COMPLETE — NetBox 3.4.1 is running
+═══════════════════════════════════════════════════════════
+
+  📍 URL:         https://netbox-netbox.apps.cluster.example.com
+  👤 Username:    admin
+  🔑 Password:    xK9mP2vL8nQ4wR7jT1yF6hA3bS5cD0eG
+
+───────────────────────────────────────────────────────────
+  Save the admin password — it won't be shown again!
+───────────────────────────────────────────────────────────
+```
 
 ---
 
