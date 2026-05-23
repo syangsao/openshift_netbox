@@ -2,6 +2,7 @@
 """Fix netbox-docker Dockerfile for OpenShift compatibility.
 
 Removes 'unit' web server dependencies and skips mkdocs build.
+Also replaces collectstatic with echo (run at startup instead).
 """
 
 with open('Dockerfile') as f:
@@ -34,28 +35,29 @@ while i < len(lines):
         continue
 
     # Fix the RUN mkdir block
-    # Line: "RUN mkdir -p static media /opt/unit/state/ /opt/unit/tmp/ \"
     if line.strip().startswith('RUN mkdir -p static media /opt/unit/'):
         line = line.replace('/opt/unit/state/ /opt/unit/tmp/', '')
 
-    # Line: "&& chown -R unit:root /opt/unit/ media reports scripts \"
     if 'chown -R unit:root /opt/unit/' in line:
         line = line.replace('chown -R unit:root /opt/unit/', 'chown -R root:root')
 
-    # Line: "&& chmod -R g+w /opt/unit/ media reports scripts \"
     if 'chmod -R g+w /opt/unit/' in line:
         line = line.replace('/opt/unit/ ', '')
 
     # Replace mkdocs build (2 lines) with echo
-    # Line 94: "&& cd /opt/netbox/ && SECRET_KEY=... python -m mkdocs build \"
-    # Line 95: "    --config-file /opt/netbox/mkdocs.yml --site-dir ... \"
     if 'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build' in line:
-        # Replace this line AND skip the next line (--config-file continuation)
         line = '      && cd /opt/netbox/ && echo "Skipping mkdocs build" \\\n'
         out.append(line)
         i += 1  # skip current (already appended)
         i += 1  # skip next line (--config-file)
         continue
+
+    # Replace collectstatic with echo (NetBox 3.4 config incompatible - run at startup)
+    if 'collectstatic --no-input' in line:
+        line = line.replace(
+            'DEBUG="true" SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py collectstatic --no-input',
+            'echo "Skipping collectstatic (will run at startup)"'
+        )
 
     # Fix django-storages sed delimiter
     if 's/django-storages/django-storages\\[azure' in line:

@@ -63,12 +63,6 @@ sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
 cp /tmp/fix_dockerfile.py .
 python3 fix_dockerfile.py
 
-# Fix configuration: NetBox 3.4.x settings.py expects 'DATABASE' (singular)
-# but the docker config defines 'DATABASES' (plural). Add compatibility alias.
-echo "🔨 Fixing configuration for NetBox 3.4.x compatibility..."
-sed -i '/^DATABASES = {/i DATABASE = DATABASES["default"]' docker/configuration.docker.py
-echo "   ✅ Added DATABASE = DATABASES['default'] for NetBox 3.4.x settings.py"
-
 # Fix dependency conflicts between netbox-docker and NetBox source
 echo "🔨 Fixing dependency conflicts in requirements files..."
 
