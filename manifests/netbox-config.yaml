@@ -9,21 +9,19 @@ data:
     import os
     from netbox.configuration import *
 
-    # ---------------------------------------------------------------------------
-    # ALLOWED_HOSTS
-    # ---------------------------------------------------------------------------
     ALLOWED_HOSTS = ['*']
-
-    # ---------------------------------------------------------------------------
-    # STATIC FILES - WhiteNoise compatibility
-    # ---------------------------------------------------------------------------
-    # WhiteNoise WSGI wrapper serves files at root-relative paths.
-    # Setting STATIC_URL to "/" makes templates reference files without /static/ prefix.
     STATIC_URL = "/"
+    SECRET_KEY = os.environ.get('SECRET_KEY', '')
+    GRAPHQL_ENABLED = True
+    WEBHOOKS_ENABLED = True
 
-    # ---------------------------------------------------------------------------
-    # DATABASE
-    # ---------------------------------------------------------------------------
+  configuration.docker.py: |
+    #!/usr/bin/env python
+    import os
+
+    # DATABASE and REDIS must be in configuration.docker.py to avoid
+    # circular import / dict merge errors in the netbox-docker entrypoint.
+
     DATABASE = {
         'NAME': os.environ.get('DB_NAME', 'netbox'),
         'USER': os.environ.get('DB_USER', 'netbox'),
@@ -33,9 +31,6 @@ data:
         'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', 300)),
     }
 
-    # ---------------------------------------------------------------------------
-    # REDIS
-    # ---------------------------------------------------------------------------
     REDIS = {
         'tasks': {
             'HOST': os.environ.get('REDIS_HOST', 'netbox-redis'),
@@ -54,33 +49,3 @@ data:
             'SSL': os.environ.get('REDIS_CACHE_SSL', 'false').lower() == 'true',
         }
     }
-
-    # ---------------------------------------------------------------------------
-    # SECURITY
-    # ---------------------------------------------------------------------------
-    SECRET_KEY = os.environ.get('SECRET_KEY', '')
-
-    # ---------------------------------------------------------------------------
-    # FEATURES
-    # ---------------------------------------------------------------------------
-    GRAPHQL_ENABLED = True
-    WEBHOOKS_ENABLED = True
-
-    # ---------------------------------------------------------------------------
-    # EMAIL (optional)
-    # ---------------------------------------------------------------------------
-    EMAIL = {
-        'SERVER': os.environ.get('EMAIL_SERVER', 'localhost'),
-        'PORT': int(os.environ.get('EMAIL_PORT', 25)),
-        'USERNAME': os.environ.get('EMAIL_USERNAME', ''),
-        'PASSWORD': os.environ.get('EMAIL_PASSWORD', ''),
-        'USE_SSL': os.environ.get('EMAIL_USE_SSL', 'false').lower() == 'true',
-        'USE_TLS': os.environ.get('EMAIL_USE_TLS', 'false').lower() == 'true',
-        'TIMEOUT': int(os.environ.get('EMAIL_TIMEOUT', 5)),
-        'FROM_EMAIL': os.environ.get('EMAIL_FROM', 'netbox@example.com'),
-    }
-
-    # ---------------------------------------------------------------------------
-    # LOGGING (optional)
-    # ---------------------------------------------------------------------------
-    # LOGLEVEL = os.environ.get('LOGLEVEL', 'INFO')

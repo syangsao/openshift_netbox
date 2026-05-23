@@ -376,6 +376,17 @@ openshift_netbox/
 
 ## Troubleshooting
 
+
+### Crash with `TypeError: unhashable type: 'dict'`
+
+**Cause:** `DATABASE` and `REDIS` config in `configuration.py` causes the
+netbox-docker entrypoint's config merger to fail when it tries to merge dicts.
+
+**Fix:** The `manifests/netbox-config.yaml` in this repo already splits the config
+correctly — `DATABASE` and `REDIS` are in `configuration.docker.py`, while other
+settings are in `configuration.py`. If you get this error, check that your custom
+`configuration.py` does NOT define `DATABASE` or `REDIS` as Python dicts.
+
 ### Pod stuck on ImagePullBackOff
 Check the ImagePullSecret:
 ```bash
