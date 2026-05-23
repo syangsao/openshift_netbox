@@ -721,9 +721,9 @@ oc wait --for=condition=ready pod -l app=netbox-redis-cache \
 echo "  ✓ Redis (cache) ready"
 
 # ── Step 11: Wait for NetBox ─────────────────────────────────────────────────
-step "Waiting for NetBox to start (up to 5 minutes for migrations + superuser)…"
+step "Waiting for NetBox to start (up to 10 minutes for migrations + superuser)…"
 oc wait --for=condition=ready pod -l app=netbox \
-    -n "$NAMESPACE" --timeout=300s 2>&1 || {
+    -n "$NAMESPACE" --timeout=600s 2>&1 || {
     echo "  ✗ NetBox not ready. Check logs:"
     oc logs -l app=netbox -n "$NAMESPACE" -c netbox --tail=30 2>/dev/null
     oc logs -l app=netbox -n "$NAMESPACE" -c netbox-worker --tail=30 2>/dev/null
