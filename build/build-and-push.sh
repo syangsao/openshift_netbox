@@ -67,43 +67,59 @@ cat > /tmp/fix_dockerfile.py << 'FIXEOF'
 with open('Dockerfile') as f:
     lines = f.readlines()
 
-# Lines to skip entirely (contain these substrings)
-SKIP_PATTERNS = [
-    'unit.list', 'nginx-keyring.gpg',
-    'unit-python3', 'unit=',
-    'nginx-unit.json',
-    '/opt/unit/',
-    '--config-file /opt/netbox/mkdocs.yml',
-]
-
-# Pattern to replace in the mkdocs build line
-OLD_MKDOCS = 'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build'
-NEW_MKDOCS = 'echo "Skipping mkdocs build"'
-
-# Pattern to fix in django-storages sed
-OLD_STORAGE = "s/django-storages/django-storages\\[azure,boto3,dropbox,google,libcloud,sftp\\]/g"
-NEW_STORAGE = "s|django-storages|django-storages[azure,boto3,dropbox,google,libcloud,sftp]|g"
-
 out = []
-for line in lines:
-    # Skip lines matching any pattern
-    skip = False
-    for pattern in SKIP_PATTERNS:
-        if pattern in line:
-            skip = True
-            break
-    if skip:
+i = 0
+while i < len(lines):
+    line = lines[i]
+
+    # Skip unit apt source list
+    if 'COPY docker/unit.list' in line:
+        i += 1
         continue
-    
+
+    # Skip nginx keyring download
+    if 'nginx-keyring.gpg' in line:
+        i += 1
+        continue
+
+    # Remove unit-python3 and unit= from apt-get install line
+    if 'unit-python3' in line:
+        line = line.replace('      unit-python3.12=1.34.2-1~noble \\\n', '')
+    if 'unit=1.34.2' in line:
+        line = line.replace('      unit=1.34.2-1~noble \\\n', '')
+
+    # Skip COPY docker/nginx-unit.json line
+    if 'COPY docker/nginx-unit.json' in line:
+        i += 1
+        continue
+
+    # Fix the RUN mkdir block
+    if line.strip().startswith('RUN mkdir -p static media /opt/unit/'):
+        line = line.replace('/opt/unit/state/ /opt/unit/tmp/', '')
+
+    if 'chown -R unit:root /opt/unit/' in line:
+        line = line.replace('chown -R unit:root /opt/unit/', 'chown -R root:root')
+
+    if 'chmod -R g+w /opt/unit/' in line:
+        line = line.replace('/opt/unit/ ', '')
+
+    # Replace mkdocs build (2 lines) with echo
+    if 'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build' in line:
+        line = '      && cd /opt/netbox/ && echo "Skipping mkdocs build" \\\n'
+        out.append(line)
+        i += 1  # skip current (already appended)
+        i += 1  # skip next line (--config-file)
+        continue
+
     # Fix django-storages sed delimiter
-    if OLD_STORAGE in line:
-        line = line.replace(OLD_STORAGE, NEW_STORAGE)
-    
-    # Replace mkdocs build with echo
-    if OLD_MKDOCS in line:
-        line = line.replace(OLD_MKDOCS, NEW_MKDOCS)
-    
+    if 's/django-storages/django-storages\\[azure' in line:
+        line = line.replace(
+            's/django-storages/django-storages\\[azure,boto3,dropbox,google,libcloud,sftp\\]/g',
+            's|django-storages|django-storages[azure,boto3,dropbox,google,libcloud,sftp]|g'
+        )
+
     out.append(line)
+    i += 1
 
 with open('Dockerfile', 'w') as f:
     f.writelines(out)
