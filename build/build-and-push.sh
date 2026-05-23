@@ -59,23 +59,9 @@ fi
 echo "🔨 Patching Dockerfile for compatibility..."
 sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
 
-# Fix build-time sed delimiter and skip mkdocs build (use Python heredoc — sed can't match nested quotes)
-python3 << 'PYEOF'
-with open('Dockerfile') as f:
-    c = f.read()
-# Fix social-auth-core sed: use | delimiter to avoid / conflict with ] in replacement
-c = c.replace(
-    "sed -i -e 's/social-auth-core/social-auth-core\\[all\\]/g'",
-    "sed -i -e 's|social-auth-core|social-auth-core\\[[^]]*\\]/social-auth-core[all]|g'"
-)
-# Skip mkdocs build — mkdocs-autorefs is incompatible with Python 3.12
-c = c.replace(
-    'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
-    "echo 'Skipping mkdocs build (incompatible with Python 3.12)' #"
-)
-with open('Dockerfile', 'w') as f:
-    f.write(c)
-PYEOF
+# Fix Dockerfile: remove unit, fix sed delimiters, skip mkdocs
+cp /tmp/fix_dockerfile.py .
+python3 fix_dockerfile.py
 
 # Fix dependency conflicts between netbox-docker and NetBox source
 echo "🔨 Fixing dependency conflicts in requirements files..."
@@ -125,7 +111,7 @@ fi
 # Remove the social-auth-core version pin so uv resolves to 4.4.0+ (supports lxml 5.x).
 sed -i '/^--no-binary lxml/d' requirements-container.txt
 sed -i '/^--no-binary xmlsec/d' requirements-container.txt
-sed -i '/^social-auth-core\[.*\]==/d' .netbox/requirements.txt
+sed -i '/^social-auth-core/d' .netbox/requirements.txt
 echo "lxml>=5.0.0" >> requirements-container.txt
 echo "   ✅ Removed --no-binary flags, social-auth-core pin + pinned lxml>=5.0.0 (Python 3.12 wheels)"
 
@@ -134,18 +120,14 @@ echo "🔍 Verifying patches..."
 if grep -q "libjpeg-dev" Dockerfile; then
   echo "   ✅ libjpeg-dev added for Pillow build"
 fi
-if grep "social-auth-core" Dockerfile | grep -q "\[\^]]"; then
-  echo "   ✅ social-auth-core: fixed bracket handling"
-else
-  echo "   ⚠️  social-auth-core: pattern may not have been updated"
-fi
+# social-auth-core sed left as-is in Dockerfile (pin removed from requirements.txt)
 # Django and jsonschema pins are preserved for Ubuntu 22.04 (Python 3.10 compatible)
 echo "   ✅ Django pin preserved (Python 3.10 compatible)"
 echo "   ✅ jsonschema pin preserved (Python 3.10 compatible)"
 if grep -q "lxml>=5.0.0" requirements-container.txt; then
   echo "   ✅ lxml>=5.0.0 pinned (Python 3.12 wheels)"
 fi
-if ! grep -q "^social-auth-core\[.*\]==" .netbox/requirements.txt; then
+if ! grep -q "^social-auth-core" .netbox/requirements.txt; then
   echo "   ✅ social-auth-core pin removed (lxml compatibility)"
 fi
 
