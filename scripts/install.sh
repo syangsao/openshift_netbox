@@ -171,6 +171,18 @@ EOF
 
 echo "  ✓ Secret created"
 
+# ── Restart pods to pick up new secret ────────────────────────────────────────
+# If deployments already exist, rolling them ensures pods get fresh env vars.
+# Without this, pods keep cached env from the old secret and DB passwords diverge.
+step "Syncing deployments with new credentials"
+for deploy in netbox-postgres netbox-redis netbox-redis-cache netbox; do
+    if oc get deploy "$deploy" -n "$NAMESPACE" &>/dev/null; then
+        echo "  Rolling $deploy…"
+        oc rollout restart deploy/"$deploy" -n "$NAMESPACE" 2>/dev/null || true
+    fi
+done
+echo "  ✓ Deployments synced"
+
 # ── Step 4: ConfigMap ────────────────────────────────────────────────────────
 step "Creating ConfigMap (netbox-config)"
 
