@@ -111,9 +111,7 @@ while i < len(lines):
         i += 1  # skip next line (--config-file)
         continue
 
-    # Fix collectstatic: add DB env vars so settings.py loads (NetBox 3.4 uses DATABASE not DATABASES)
-    if '/opt/netbox/netbox/manage.py collectstatic --no-input' in line:
-        # Replace the SECRET_KEY=... prefix to include DB env vars
+   if '/opt/netbox/netbox/manage.py collectstatic --no-input' in line:
         line = line.replace(
             'DEBUG="true" SECRET_KEY="dummyKeyWithMinimumLength-------------------------"',
             'DEBUG="true" SECRET_KEY="dummyKeyWithMinimumLength-------------------------" DB_NAME=netbox DB_USER=netbox DB_PASSWORD=netbox DB_HOST=localhost'
@@ -136,6 +134,12 @@ print("Dockerfile patched successfully")
 FIXEOF
 
 python3 /tmp/fix_dockerfile.py
+
+# Fix configuration: NetBox 3.4.x settings.py expects 'DATABASE' (singular)
+# but the docker config defines 'DATABASES' (plural). Add compatibility alias.
+echo "🔨 Fixing configuration for NetBox 3.4.x compatibility..."
+sed -i '/^DATABASES = {/i DATABASE = DATABASES["default"]' docker/configuration.docker.py
+echo "   ✅ Added DATABASE = DATABASES['default'] for NetBox 3.4.x settings.py"
 
 # Fix dependency conflicts between netbox-docker and NetBox source
 echo "🔨 Fixing dependency conflicts in requirements files..."
