@@ -111,6 +111,14 @@ while i < len(lines):
         i += 1  # skip next line (--config-file)
         continue
 
+    # Fix collectstatic: add DB env vars so settings.py loads (NetBox 3.4 uses DATABASE not DATABASES)
+    if '/opt/netbox/netbox/manage.py collectstatic --no-input' in line:
+        # Replace the SECRET_KEY=... prefix to include DB env vars
+        line = line.replace(
+            'DEBUG="true" SECRET_KEY="dummyKeyWithMinimumLength-------------------------"',
+            'DEBUG="true" SECRET_KEY="dummyKeyWithMinimumLength-------------------------" DB_NAME=netbox DB_USER=netbox DB_PASSWORD=netbox DB_HOST=localhost'
+        )
+
     # Fix django-storages sed delimiter
     if 's/django-storages/django-storages\\[azure' in line:
         line = line.replace(
