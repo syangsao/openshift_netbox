@@ -536,6 +536,41 @@ sed -i '/^PyYAML==/d' .netbox/requirements.txt
 ### podman build fails with `social-auth-core[all][openidconnect]`
 The upstream Dockerfile's sed command creates double brackets when `requirements.txt` already has `social-auth-core[openidconnect]` (NetBox 3.4.x and newer). The build scripts handle this automatically. For manual builds, use the Python heredoc patch shown in [Step 3](#3-patch-the-dockerfile-use-two-separate-sed-calls) or the [Troubleshooting section above](#podman-build-fails-with-social-auth-core-double-brackets).
 
+### Cannot log in — admin password doesn't work
+
+**Symptom:** You can reach the NetBox login page but the `admin` credentials from `netbox-env.yaml` are rejected.
+
+**Cause:** `SKIP_SUPERUSER=true` in the secret skips the entrypoint's superuser creation/reset on every startup. If the password was changed or the superuser was created with a different value, the secret and the database fall out of sync.
+
+**Fix — reset the password directly in the database:**
+
+```bash
+POD=$(oc get pods -n netbox -l app=netbox -o jsonpath='{.items[0].metadata.name}')
+oc exec "$POD" -n netbox -c netbox -- python3 -c "
+import django, os, sys
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'netbox.settings')
+sys.path.insert(0, '/opt/netbox/netbox')
+django.setup()
+from users.models import User
+u = User.objects.get(username='admin')
+u.set_password('admin')
+u.save()
+print(f'check_password: {u.check_password(chr(97)+chr(100)+chr(109)+chr(105)+chr(110))}')
+print('Password reset complete!')
+"
+```
+
+**Then sync the secret so it matches:**
+
+```bash
+oc set env secret/netbox-env \
+  SUPERUSER_PASSWORD=admin \
+  SKIP_SUPERUSER=false \
+  -n netbox
+```
+
+> **Note:** The NetBox Docker image uses `users.models.User` — not `django.contrib.auth.models.User`. Using the Django default import will raise `OperationalError: no such table: auth_user`.
+
 ---
 
 ## References
