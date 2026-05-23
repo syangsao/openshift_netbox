@@ -113,3 +113,5 @@ spec:
   resources:
     requests:
       storage: 10Gi
+  # CHANGE: Set your storage class (e.g., nfs-csidriver3, gp3, etc.)
+  # storageClassName: nfs-csidriver3

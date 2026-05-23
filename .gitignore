@@ -3,3 +3,6 @@
 *~
 .idea/
 .vscode/
+.netbox/
+Dockerfile
+docker/
