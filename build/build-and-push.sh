@@ -59,43 +59,59 @@ fi
 echo "🔨 Patching Dockerfile for compatibility..."
 sed -i '/libxslt-dev/i\      libjpeg-dev \\' Dockerfile
 
-# Fix build-time sed delimiter, skip mkdocs, and remove Ubuntu 24.04-only packages
-# (use Python heredoc — sed can't match nested quotes)
-python3 << 'PYEOF'
+# Fix Dockerfile: remove unit, fix sed delimiters, skip mkdocs
+cat > /tmp/fix_dockerfile.py << 'FIXEOF'
+#!/usr/bin/env python3
+"""Fix netbox-docker Dockerfile for OpenShift compatibility."""
+
 with open('Dockerfile') as f:
     lines = f.readlines()
 
+# Lines to skip entirely (contain these substrings)
+SKIP_PATTERNS = [
+    'unit.list', 'nginx-keyring.gpg',
+    'unit-python3', 'unit=',
+    'nginx-unit.json',
+    '/opt/unit/',
+    '--config-file /opt/netbox/mkdocs.yml',
+]
+
+# Pattern to replace in the mkdocs build line
+OLD_MKDOCS = 'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build'
+NEW_MKDOCS = 'echo "Skipping mkdocs build"'
+
+# Pattern to fix in django-storages sed
+OLD_STORAGE = "s/django-storages/django-storages\\[azure,boto3,dropbox,google,libcloud,sftp\\]/g"
+NEW_STORAGE = "s|django-storages|django-storages[azure,boto3,dropbox,google,libcloud,sftp]|g"
+
 out = []
-skip_next = 0
-for i, line in enumerate(lines):
-    if skip_next > 0:
-        skip_next -= 1
+for line in lines:
+    # Skip lines matching any pattern
+    skip = False
+    for pattern in SKIP_PATTERNS:
+        if pattern in line:
+            skip = True
+            break
+    if skip:
         continue
-    # Skip unit apt source and GPG key (Ubuntu 24.04-only)
-    if 'unit.list' in line or 'nginx-keyring.gpg' in line:
-        continue
-    # Skip unit package installations (Ubuntu 24.04-only)
-    if 'unit-python3' in line or line.strip().startswith('unit='):
-        continue
-    # Skip unit config copy
-    if 'nginx-unit.json' in line:
-        continue
-    # Skip unit state directory creation
-    if '/opt/unit/' in line:
-        continue
-    # Leave the social-auth-core sed as-is - we already removed the pin from requirements.txt
-    # Skip mkdocs build — replace with echo and skip the --config-file continuation
-    if '-m mkdocs build' in line:
-        line = line.replace(
-            'SECRET_KEY="dummyKeyWithMinimumLength-------------------------" /opt/netbox/venv/bin/python -m mkdocs build',
-            'echo "Skipping mkdocs build" \'
-        )
-        skip_next = 1  # skip the --config-file line
+    
+    # Fix django-storages sed delimiter
+    if OLD_STORAGE in line:
+        line = line.replace(OLD_STORAGE, NEW_STORAGE)
+    
+    # Replace mkdocs build with echo
+    if OLD_MKDOCS in line:
+        line = line.replace(OLD_MKDOCS, NEW_MKDOCS)
+    
     out.append(line)
 
 with open('Dockerfile', 'w') as f:
     f.writelines(out)
-PYEOF
+
+print("Dockerfile patched successfully")
+FIXEOF
+
+python3 /tmp/fix_dockerfile.py
 
 # Fix dependency conflicts between netbox-docker and NetBox source
 echo "🔨 Fixing dependency conflicts in requirements files..."
