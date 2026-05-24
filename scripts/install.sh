@@ -37,6 +37,8 @@ QUAY_PASS="${QUAY_PASS:-AUCHW1GNI5GD1LJIDS8FTKQNJ4460NJW972PF6YKWM2MQGPF2FG7XJ3Z
 
 # Docker Hub source image (community netbox image)
 SOURCE_REGISTRY="${SOURCE_REGISTRY:-docker.io}"
+
+# Source image repository
 SOURCE_REPO="${SOURCE_REPO:-netboxcommunity/netbox}"
 
 # OpenShift namespace
@@ -70,6 +72,8 @@ registry, and deploys it on OpenShift.
 
 Options:
   --netbox-version VERSION   NetBox version     (default: ${NETBOX_VERSION})
+  --source-registry REGISTRY Source registry    (default: docker.io)
+  --source-repo REPO         Source repo path   (default: netboxcommunity/netbox)
   --quay-host HOST           Quay hostname      (default: ${QUAY_HOST})
   --quay-repo REPO           Quay repo path     (default: ${QUAY_REPO})
   --quay-user USER           Quay username      (default: ${QUAY_USER})
@@ -77,6 +81,7 @@ Options:
   --namespace NAME           OpenShift namespace (default: ${NAMESPACE})
   --admin-password PASS      Admin password     (default: admin)
   --storage-class CLASS      PVC storage class  (default: auto-detect)
+  --pull-secret-name NAME    Pull secret name   (default: ${PULL_SECRET_NAME})
   --dry-run                  Generate manifests only, do not apply
   --help                     Show this help
 
@@ -90,6 +95,8 @@ DRY_RUN=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --netbox-version)   NETBOX_VERSION="$2";     shift 2 ;;
+        --source-registry)  SOURCE_REGISTRY="$2";    shift 2 ;;
+        --source-repo)      SOURCE_REPO="$2";        shift 2 ;;
         --quay-host)        QUAY_HOST="$2";          shift 2 ;;
         --quay-repo)        QUAY_REPO="$2";          shift 2 ;;
         --quay-user)        QUAY_USER="$2";          shift 2 ;;
@@ -97,6 +104,7 @@ while [[ $# -gt 0 ]]; do
         --namespace)        NAMESPACE="$2";          shift 2 ;;
         --admin-password)   ADMIN_PASSWORD="$2";     shift 2 ;;
         --storage-class)    STORAGE_CLASS="$2";      shift 2 ;;
+        --pull-secret-name) PULL_SECRET_NAME="$2";   shift 2 ;;
         --dry-run)          DRY_RUN=true;            shift   ;;
         --help)             usage ;;
         *)                  echo "Unknown option: $1"; usage ;;
