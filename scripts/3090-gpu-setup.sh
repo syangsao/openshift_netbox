@@ -9,7 +9,7 @@
 # This version is for a single RTX 3090 only.
 #
 # What it does:
-#   - Sets power limit to 250W
+#   - Sets power limit to 330W
 #   - Locks GPU core clocks to 1850MHz
 #   - Applies +200MHz core overclock
 #   - Applies +1000MHz memory overclock
@@ -322,8 +322,8 @@ try:
     try:
         dev_3090 = nvmlDeviceGetHandleByIndex(0)
 
-        # 250W Limit & 1850MHz Lock (efficiency sweet spot for the 3090)
-        nvmlDeviceSetPowerManagementLimit(dev_3090, 250000)
+        # 330W Limit & 1850MHz Lock (efficiency sweet spot for the 3090)
+        nvmlDeviceSetPowerManagementLimit(dev_3090, 330000)
         nvmlDeviceSetGpuLockedClocks(dev_3090, 210, 1850)
 
         # Core Offset (+200MHz safe Ampere start)
@@ -342,7 +342,7 @@ try:
         info_mem_0.clockOffsetMHz = 1000
         nvmlDeviceSetClockOffsets(dev_3090, byref(info_mem_0))
 
-        print("[SUCCESS] RTX 3090 Configured (250W | 1850MHz | +200 Core | +1000 Mem)")
+        print("[SUCCESS] RTX 3090 Configured (330W | 1850MHz | +200 Core | +1000 Mem)")
     except Exception as e:
         print(f"[FAIL] Could not configure GPU 0 (3090): {e}")
 
