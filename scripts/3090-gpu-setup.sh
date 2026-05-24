@@ -13,19 +13,20 @@
 #   - Applies +200MHz core overclock
 #   - Applies +1000MHz memory overclock
 #   - Enables persistence mode
-#   (Does NOT touch power limit — use --set-power or --set-power-scale)
+#   (Does NOT touch power limit — set manually with nvidia-smi -pl)
 #
 # Usage: ./3090-gpu-setup.sh [OPTIONS]
 #
 # Options:
-#   --check                 Show current GPU settings (power, clocks, offsets)
-#   --save                  Save current settings to backup file
-#   --apply                 Apply clock offsets/locks (default action)
-#   --restore               Restore previously saved settings
-#   --set-power W           Set power limit to W watts (e.g. --set-power 350)
-#   --set-power-scale S     Set power scale per P-state (e.g. --set-power-scale 350:300:250:200:150:100:80:60:40)
-#                           Format: P0:P1:P2:P3:P4:P5:P6:P7:P8 (9 values, colon-separated)
-#   --backup PATH           Set custom backup file path (default: ~/.3090-gpu-backup)
+#   --check         Show current GPU settings (power, clocks, offsets)
+#   --save          Save current settings to backup file
+#   --apply         Apply clock offsets/locks (default action)
+#   --restore       Restore previously saved settings
+#   --backup PATH   Set custom backup file path (default: ~/.3090-gpu-backup)
+#
+# Power management is done manually:
+#   nvidia-smi -pm 1          Enable persistence mode
+#   nvidia-smi -pl 350        Set power limit to 350W
 #
 # Run as root or with sudo on a machine with NVIDIA drivers installed.
 # =============================================================================
@@ -33,8 +34,6 @@ set -euo pipefail
 
 BACKUP_FILE="${HOME}/.3090-gpu-backup"
 ACTION="apply"
-POWER_LIMIT_WATTS=""
-POWER_SCALE=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -55,26 +54,6 @@ while [[ $# -gt 0 ]]; do
       ACTION="restore"
       shift
       ;;
-    --set-power)
-      ACTION="set-power"
-      if [[ -z "${2:-}" ]] || ! [[ "$2" =~ ^[0-9]+$ ]]; then
-        echo "ERROR: --set-power requires a numeric wattage value (e.g. --set-power 350)"
-        exit 1
-      fi
-      POWER_LIMIT_WATTS="$2"
-      shift 2
-      ;;
-    --set-power-scale)
-      ACTION="set-power-scale"
-      if [[ -z "${2:-}" ]]; then
-        echo "ERROR: --set-power-scale requires colon-separated wattage values"
-        echo "  Format: P0:P1:P2:P3:P4:P5:P6:P7:P8"
-        echo "  Example: --set-power-scale 350:300:250:200:150:100:80:60:40"
-        exit 1
-      fi
-      POWER_SCALE="$2"
-      shift 2
-      ;;
     --backup)
       if [[ -z "${2:-}" ]]; then
         echo "ERROR: --backup requires a file path (e.g. --backup /path/to/file)"
@@ -85,7 +64,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--check | --save | --apply | --restore | --set-power W | --set-power-scale S] [--backup PATH]"
+      echo "Usage: $0 [--check | --save | --apply | --restore] [--backup PATH]"
       exit 1
       ;;
   esac
@@ -100,27 +79,20 @@ show_current_settings() {
   echo "============================================================"
   echo ""
 
-  # GPU info with power limit
-  nvidia-smi --query-gpu=name,index,pstate,power.draw,power.limit,clocks.current.graphics,clocks.current.memory,clocks.max.graphics,clocks.max.memory,clocks.offset.graphics,clocks.offset.memory --format=csv,noheader,header=once 2>/dev/null || \
-    nvidia-smi -q | grep -E 'Name|Power Draw|Power Limit|Graphics|Memory|Offset'
-
-  echo ""
-
-  # Power limit summary
-  echo "--- Power Limit ---"
-  local power_limit pm_mode
-  power_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
+  # Power
+  echo "--- Power ---"
+  nvidia-smi --query-gpu=power.draw,power.limit --format=csv,noheader,header=once 2>/dev/null || \
+    echo "  unavailable"
+  local pm_mode
   pm_mode=$(nvidia-smi -q 2>/dev/null | grep "Persistence Mode" | head -1 | awk '{print $NF}' || echo "unknown")
-  default_pl=$(nvidia-smi -q 2>/dev/null | grep "Power Limit" | head -1 | grep -oP '^\s+\K[\d.]+' || echo "unknown")
-  echo "  Current power limit: ${power_limit}"
-  echo "  Default power limit: ${default_pl}W"
-  echo "  Persistence mode:    ${pm_mode}"
+  echo "  Persistence mode: ${pm_mode}"
 
   echo ""
 
-  # Detailed query
-  echo "--- Detailed ---"
-  nvidia-smi -q | grep -A1 -E 'Power Management|Clocks|Offset|Performance State' | head -40
+  # Clocks & offsets (what --apply changes)
+  echo "--- Clocks & Offsets ---"
+  nvidia-smi --query-gpu=clocks.current.graphics,clocks.current.memory,clocks.max.graphics,clocks.max.memory,clocks.offset.graphics,clocks.offset.memory --format=csv,noheader,header=once 2>/dev/null || \
+    echo "  unavailable"
 
   echo ""
   echo "============================================================"
@@ -216,28 +188,6 @@ EOF
   echo "Note: Power limit reset requires reboot or nvidia-smi -pm 0 && nvidia-smi -pm 1"
 }
 
-# ---------------------------------------------------------------------------
-# Helper: Ensure persistence mode is enabled
-# ---------------------------------------------------------------------------
-ensure_persistence() {
-  pm_status=$(nvidia-smi -q 2>/dev/null | grep "Persistence Mode" | head -1 | awk '{print $NF}' || echo "unknown")
-  if [[ "$pm_status" != "Enabled" ]]; then
-    echo "Enabling persistence mode..."
-    if ! nvidia-smi -pm 1 2>/dev/null; then
-      echo "✗ Failed to enable persistence mode. Run as root/sudo."
-      exit 1
-    fi
-    sleep 1
-    echo "  ✓ Persistence mode enabled"
-  else
-    echo "Persistence mode already enabled."
-  fi
-}
-
-# ---------------------------------------------------------------------------
-# Main action
-# ---------------------------------------------------------------------------
-
 case "${ACTION}" in
   check)
     show_current_settings
@@ -250,105 +200,6 @@ case "${ACTION}" in
     ;;
   restore)
     restore_settings
-    exit 0
-    ;;
-  set-power)
-    ensure_persistence
-
-    old_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
-    echo "  Previous power limit: ${old_limit}"
-
-    default_pl=$(nvidia-smi -q 2>/dev/null | grep "Power Limit" | head -1 | grep -oP '^\s+\K[\d.]+' || echo "")
-
-    echo ""
-    echo "Setting power limit to ${POWER_LIMIT_WATTS}W..."
-
-    if output=$(nvidia-smi -pl "${POWER_LIMIT_WATTS}" 2>&1); then
-      echo "  ✓ Power limit set to ${POWER_LIMIT_WATTS}W"
-    else
-      echo "  ✗ Failed to set power limit to ${POWER_LIMIT_WATTS}W"
-      echo "  Error: ${output}"
-      echo ""
-      echo "  Default power limit: ${default_pl}W"
-      echo "  Make sure the value is within the GPU's supported range."
-      echo "  Run '$0 --check' to see supported limits."
-      exit 1
-    fi
-
-    echo ""
-    echo "Current GPU status after change:"
-    nvidia-smi --query-gpu=name,power.draw,power.limit,clocks.current.graphics,clocks.current.memory --format=csv,noheader,header=once 2>/dev/null || true
-
-    echo ""
-    echo "To check full settings:     $0 --check"
-    echo "To restore original settings: $0 --restore --backup ${BACKUP_FILE}"
-    exit 0
-    ;;
-  set-power-scale)
-    # Parse colon-separated values
-    IFS=':' read -ra POWER_VALUES <<< "${POWER_SCALE}"
-    num_values=${#POWER_VALUES[@]}
-
-    if [[ "$num_values" -ne 9 ]]; then
-      echo "ERROR: --set-power-scale requires exactly 9 values (P0 through P8)"
-      echo "  Got ${num_values} values: ${POWER_SCALE}"
-      echo "  Format: P0:P1:P2:P3:P4:P5:P6:P7:P8"
-      echo "  Example: --set-power-scale 350:300:250:200:150:100:80:60:40"
-      exit 1
-    fi
-
-    # Validate all values are positive integers
-    for i in "${!POWER_VALUES[@]}"; do
-      val="${POWER_VALUES[$i]}"
-      if ! [[ "$val" =~ ^[0-9]+$ ]] || [[ "$val" -le 0 ]]; then
-        echo "ERROR: P${i} value '${val}' is not a valid positive integer"
-        exit 1
-      fi
-    done
-
-    ensure_persistence
-
-    echo ""
-    echo "Setting power scale (per P-state):"
-    for i in "${!POWER_VALUES[@]}"; do
-      echo "  P${i}: ${POWER_VALUES[$i]}W"
-    done
-
-    # Save current power limit before changes
-    old_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
-    echo ""
-    echo "  Previous power limit (P0): ${old_limit}"
-
-    echo ""
-    echo "Applying power scale..."
-
-    # Apply P0 first (the active power limit)
-    if output=$(nvidia-smi -pl "${POWER_VALUES[0]}" 2>&1); then
-      echo "  ✓ P0 set to ${POWER_VALUES[0]}W"
-    else
-      echo "  ✗ Failed to set P0 to ${POWER_VALUES[0]}W"
-      echo "  Error: ${output}"
-      exit 1
-    fi
-
-    # For P1-P8, use nvidia-smi --power-limit-pstates if available
-    # This sets power limits for non-active performance states
-    if nvidia-smi --power-limit-pstates "${POWER_SCALE}" 2>/dev/null; then
-      echo "  ✓ Power scale applied for P1-P8"
-    else
-      echo ""
-      echo "  Note: --power-limit-pstates not supported by this driver."
-      echo "  P0 is set to ${POWER_VALUES[0]}W. P1-P8 will use driver defaults."
-      echo "  To set all states equally: use --set-power ${POWER_VALUES[0]}"
-    fi
-
-    echo ""
-    echo "Current GPU status after change:"
-    nvidia-smi --query-gpu=name,pstate,power.draw,power.limit,clocks.current.graphics,clocks.current.memory --format=csv,noheader,header=once 2>/dev/null || true
-
-    echo ""
-    echo "To check full settings:     $0 --check"
-    echo "To restore original settings: $0 --restore --backup ${BACKUP_FILE}"
     exit 0
     ;;
   apply)
@@ -456,9 +307,11 @@ EOF
     echo "GPU clock configuration complete."
     echo "Backup saved to: ${BACKUP_FILE}"
     echo ""
-    echo "To set power limit:          $0 --set-power 350"
-    echo "To set power scale:          $0 --set-power-scale 350:300:250:200:150:100:80:60:40"
+    echo "Power management (manual):"
+    echo "  nvidia-smi -pm 1              Enable persistence mode"
+    echo "  nvidia-smi -pl 350            Set power limit to 350W"
+    echo ""
     echo "To restore original settings: $0 --restore --backup ${BACKUP_FILE}"
-    echo "To check current settings:     $0 --check"
+    echo "To check current settings:    $0 --check"
     ;;
 esac
