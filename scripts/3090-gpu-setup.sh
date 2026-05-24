@@ -74,43 +74,72 @@ done
 # Helper: Display current GPU settings
 # ---------------------------------------------------------------------------
 show_current_settings() {
-  echo "============================================================"
-  echo "  Current GPU Settings"
-  echo "============================================================"
-  echo ""
+  # Write a Python script to read actual NVML values
+  cat << 'EOF' > /tmp/gpu_check.py
+from pynvml import *
 
-  # Power management (maps to nvmlDeviceSetPowerManagementLimit)
-  echo "--- Power ---"
-  pl_default=$(nvidia-smi -q 2>/dev/null | grep -A2 "Power Management" | grep "Default Power" | grep -oP '^\s+\K[\d.]+' || echo "")
-  pl_current=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
-  pm_mode=$(nvidia-smi -q 2>/dev/null | grep "Persistence Mode" | head -1 | awk '{print $NF}' || echo "unknown")
-  echo "  Default power limit:  ${pl_default}W"
-  echo "  Current power limit:  ${pl_current}"
-  echo "  Persistence mode:     ${pm_mode}"
+try:
+    nvmlInit()
 
-  echo ""
+    for i in range(nvmlDeviceGetCount()):
+        dev = nvmlDeviceGetHandleByIndex(i)
+        name = nvmlDeviceGetName(dev)
 
-  # Locked clocks (maps to nvmlDeviceSetGpuLockedClocks)
-  echo "--- Locked Clocks ---"
-  clocks_min=$(nvidia-smi -q -d CLOCK -e 1 2>/dev/null | grep "Graphics" | head -1 | grep -oP 'min = \K[\d.]+' || echo "")
-  clocks_max=$(nvidia-smi -q -d CLOCK -e 1 2>/dev/null | grep "Graphics" | head -1 | grep -oP 'max = \K[\d.]+' || echo "")
-  if [[ -n "$clocks_min" && -n "$clocks_max" ]]; then
-    echo "  Locked range: ${clocks_min} - ${clocks_max} MHz"
-  else
-    echo "  Locked range: unavailable"
-  fi
+        print("============================================================")
+        print("  Current GPU Settings — " + name)
+        print("============================================================")
+        print()
 
-  echo ""
+        # Power management (maps to nvmlDeviceSetPowerManagementLimit)
+        print("--- Power ---")
+        try:
+            pl = nvmlDeviceGetPowerManagementLimit(dev) / 1000
+            print(f"  Current power limit: {pl:.0f} W")
+        except NVML_ERROR as e:
+            print(f"  Current power limit: N/A ({e})")
 
-  # Clock offsets (maps to nvmlDeviceSetClockOffsets)
-  echo "--- Clock Offsets ---"
-  off_graphics=$(nvidia-smi --query-gpu=clocks.offset.graphics --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
-  off_memory=$(nvidia-smi --query-gpu=clocks.offset.memory --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
-  echo "  Core offset:  ${off_graphics}"
-  echo "  Memory offset: ${off_memory}"
+        print()
 
-  echo ""
-  echo "============================================================"
+        # Locked clocks (maps to nvmlDeviceSetGpuLockedClocks)
+        print("--- Locked Clocks ---")
+        try:
+            clocks = nvmlDeviceGetGpuLockedClocks(dev)
+            print(f"  Locked range: {clocks.minClockMHz} - {clocks.maxClockMHz} MHz")
+        except NVML_ERROR as e:
+            print(f"  No locked clocks set")
+
+        print()
+
+        # Clock offsets (maps to nvmlDeviceSetClockOffsets)
+        print("--- Clock Offsets ---")
+        try:
+            core_offset = nvmlDeviceGetClockOffset(dev, NVML_CLOCK_GRAPHICS)
+            mem_offset = nvmlDeviceGetClockOffset(dev, NVML_CLOCK_MEM)
+            print(f"  Core offset:   {core_offset} MHz")
+            print(f"  Memory offset: {mem_offset} MHz")
+        except NVML_ERROR as e:
+            print(f"  No clock offsets set")
+
+        print()
+        print("============================================================")
+
+except Exception as e:
+    print(f"Error: {e}")
+finally:
+    nvmlShutdown()
+EOF
+
+  docker run --rm \
+    --privileged \
+    --network host \
+    --runtime=nvidia \
+    -e NVIDIA_VISIBLE_DEVICES=all \
+    -e NVIDIA_DRIVER_CAPABILITIES=all \
+    -v /tmp/gpu_check.py:/tmp/gpu_check.py \
+    python:3.11-slim \
+    bash -c "pip install nvidia-ml-py --quiet && python /tmp/gpu_check.py"
+
+  rm /tmp/gpu_check.py
 }
 
 # ---------------------------------------------------------------------------
