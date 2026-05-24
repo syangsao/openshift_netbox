@@ -14,26 +14,35 @@
 #
 # Prerequisites:
 #   - oc CLI authenticated to your OpenShift cluster
-#   - podman CLI installed (for pulling & pushing images)
-#   - podman logged in to both Docker Hub and your Quay registry
+#   - podman or docker CLI installed (for pulling & pushing images)
+#   - logged in to both Docker Hub and your Quay registry
 # =============================================================================
 set -euo pipefail
 
 # ── Configuration Variables ───────────────────────────────────────────────────
-# Edit these to match your environment
+#
+# Set these via environment variables or CLI flags — do not hardcode secrets:
+#
+#   export QUAY_HOST="quay.io/myorg"
+#   export QUAY_PASS="my-robot-token"
+#   ./scripts/install.sh --namespace netbox --admin-password "my-secret"
+#
+# Or combine both:
+#   QUAY_HOST="quay.io/myorg" ./scripts/install.sh --quay-pass "$(cat ~/.quay-token)"
+#
 
 # NetBox version to deploy
 NETBOX_VERSION="${NETBOX_VERSION:-3.4.1}"
 
 # Quay registry hostname (no https:// prefix)
-QUAY_HOST="${QUAY_HOST:-registry-quay-quay-enterprise.apps.luke.syangsao.net}"
+QUAY_HOST="${QUAY_HOST:-quay.io}"
 
-# Quay repository path (e.g. openshift/netbox)
-QUAY_REPO="${QUAY_REPO:-openshift/netbox}"
+# Quay repository path (e.g. myorg/netbox)
+QUAY_REPO="${QUAY_REPO:-myorg/netbox}"
 
 # Quay robot account credentials for pull secret + image push
 QUAY_USER="${QUAY_USER:-openshift+robot}"
-QUAY_PASS="${QUAY_PASS:-AUCHW1GNI5GD1LJIDS8FTKQNJ4460NJW972PF6YKWM2MQGPF2FG7XJ3Z5ZEARC9P}"
+QUAY_PASS="${QUAY_PASS:-}"
 
 # Docker Hub source image (community netbox image)
 SOURCE_REGISTRY="${SOURCE_REGISTRY:-docker.io}"
