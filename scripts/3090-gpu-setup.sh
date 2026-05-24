@@ -121,6 +121,18 @@ try:
             print(f"  No clock offsets set")
 
         print()
+
+        # Current clock speeds
+        print("--- Current Clock Speeds ---")
+        try:
+            gpu_clock = nvmlDeviceGetClock(dev, NVML_CLOCK_GRAPHICS, NVML_CLOCK_ID_CURRENT)
+            mem_clock = nvmlDeviceGetClock(dev, NVML_CLOCK_MEM, NVML_CLOCK_ID_CURRENT)
+            print(f"  GPU clock:   {gpu_clock} MHz")
+            print(f"  Memory clock: {mem_clock} MHz")
+        except Exception as e:
+            print(f"  N/A ({e})")
+
+        print()
         print("============================================================")
 
 except Exception as e:
