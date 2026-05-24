@@ -77,7 +77,6 @@ show_current_settings() {
   # Write a Python script to read actual NVML values
   cat << 'EOF' > /tmp/gpu_check.py
 from pynvml import *
-from pynvml import NVML_ERROR
 
 try:
     nvmlInit()
