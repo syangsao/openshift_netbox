@@ -77,6 +77,7 @@ show_current_settings() {
   # Write a Python script to read actual NVML values
   cat << 'EOF' > /tmp/gpu_check.py
 from pynvml import *
+from pynvml import NVML_ERROR
 
 try:
     nvmlInit()
@@ -95,7 +96,7 @@ try:
         try:
             pl = nvmlDeviceGetPowerManagementLimit(dev) / 1000
             print(f"  Current power limit: {pl:.0f} W")
-        except NVML_ERROR as e:
+        except Exception as e:
             print(f"  Current power limit: N/A ({e})")
 
         print()
@@ -105,7 +106,7 @@ try:
         try:
             clocks = nvmlDeviceGetGpuLockedClocks(dev)
             print(f"  Locked range: {clocks.minClockMHz} - {clocks.maxClockMHz} MHz")
-        except NVML_ERROR as e:
+        except Exception as e:
             print(f"  No locked clocks set")
 
         print()
@@ -117,7 +118,7 @@ try:
             mem_offset = nvmlDeviceGetClockOffset(dev, NVML_CLOCK_MEM)
             print(f"  Core offset:   {core_offset} MHz")
             print(f"  Memory offset: {mem_offset} MHz")
-        except NVML_ERROR as e:
+        except Exception as e:
             print(f"  No clock offsets set")
 
         print()
@@ -137,7 +138,7 @@ EOF
     -e NVIDIA_DRIVER_CAPABILITIES=all \
     -v /tmp/gpu_check.py:/tmp/gpu_check.py \
     python:3.11-slim \
-    bash -c "pip install nvidia-ml-py --quiet && python /tmp/gpu_check.py"
+    bash -c "pip install nvidia-ml-py --quiet --quiet 2>/dev/null && python /tmp/gpu_check.py"
 
   rm /tmp/gpu_check.py
 }
