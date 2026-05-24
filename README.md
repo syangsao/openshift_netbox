@@ -11,6 +11,12 @@ A step-by-step guide to build the [NetBox Docker image](https://github.com/netbo
 
 ---
 
+## Additional Guides
+
+- **[RTX 3090 Single GPU Deployment](docs/rtx-3090-deployment.md)** — Deploy Qwen3.6-27B on a single RTX 3090 using vLLM (speed) or llama.cpp (high context + vision). Includes GPU undervolt/overclock script.
+
+---
+
 ## Quick Start — One-Command Install
 
 The `scripts/install.sh` script pulls the NetBox community image from Docker Hub, pushes it to your Quay registry, and deploys everything on OpenShift in a single command.
@@ -435,6 +441,14 @@ oc scale deployment netbox -n netbox --replicas=2
 openshift_netbox/
 ├── .ggignore                    # GitGuardian ignore (placeholder secrets)
 ├── README.md                    # This guide
+├── docs/
+│   ├── build-from-source.md     # Detailed build steps
+│   ├── community-image.md       # Community image deployment
+│   ├── openshift-manifests.md   # OpenShift manifest deployment
+│   └── rtx-3090-deployment.md   # Single RTX 3090 GPU deployment
+├── scripts/
+│   ├── install.sh               # One-click NetBox install
+│   └── 3090-gpu-setup.sh        # GPU undervolt/overclock for RTX 3090
 ├── build/
 │   ├── build-and-push.sh        # Build with Ubuntu 22.04 base
 │   └── build-and-push-24.04.sh  # Build with Ubuntu 24.04 base (patches Dockerfile)
