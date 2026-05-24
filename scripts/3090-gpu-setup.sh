@@ -90,15 +90,13 @@ show_current_settings() {
 
   # Power limit summary
   echo "--- Power Limit ---"
-  local power_limit mw
+  local power_limit pm_mode
   power_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
-  if [[ "$power_limit" != "unknown" ]]; then
-    mw=$(nvidia-smi --query-gpu=power.management.allowed --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "N/A")
-    echo "  Power limit:       ${power_limit}"
-    echo "  Power management:  ${mw}"
-  else
-    echo "  Power limit:       unknown (nvidia-smi query failed)"
-  fi
+  pm_mode=$(nvidia-smi -q 2>/dev/null | grep "Persistence Mode" | head -1 | awk '{print $NF}' || echo "unknown")
+  default_pl=$(nvidia-smi -q 2>/dev/null | grep "Power Limit" | head -1 | grep -oP '^\s+\K[\d.]+' || echo "unknown")
+  echo "  Current power limit: ${power_limit}"
+  echo "  Default power limit: ${default_pl}W"
+  echo "  Persistence mode:    ${pm_mode}"
 
   echo ""
 
@@ -219,26 +217,40 @@ case "${ACTION}" in
     exit 0
     ;;
   set-power)
-    # Enable persistence mode if not already enabled
-    nvidia-smi -pm 1 2>/dev/null || true
+    # Check persistence mode status
+    pm_status=$(nvidia-smi -q 2>/dev/null | grep "Persistence Mode" | head -1 | awk '{print $NF}' || echo "unknown")
+    echo "Persistence Mode: ${pm_status}"
 
-    # Convert watts to milliwatts (nvidia-smi expects mW)
-    local_mw=$((POWER_LIMIT_WATTS * 1000))
-
-    echo "Setting power limit to ${POWER_LIMIT_WATTS}W (${local_mw}mW)..."
+    if [[ "$pm_status" != "Enabled" ]]; then
+      echo "Enabling persistence mode..."
+      if ! nvidia-smi -pm 1 2>/dev/null; then
+        echo "✗ Failed to enable persistence mode. Run as root/sudo."
+        exit 1
+      fi
+      sleep 1
+      echo "  ✓ Persistence mode enabled"
+    fi
 
     # Get current power limit before change
-    local old_limit
     old_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
     echo "  Previous power limit: ${old_limit}"
 
-    # Apply the new power limit
-    nvidia-smi -pl "${POWER_LIMIT_WATTS}" 2>/dev/null
-    if [[ $? -eq 0 ]]; then
+    # Get default/max power limit from GPU
+    default_pl=$(nvidia-smi -q 2>/dev/null | grep "Power Limit" | head -1 | grep -oP '^\s+\K[\d.]+' || echo "")
+
+    echo ""
+    echo "Setting power limit to ${POWER_LIMIT_WATTS}W..."
+
+    # Apply the new power limit (nvidia-smi -pl takes watts as integer)
+    if output=$(nvidia-smi -pl "${POWER_LIMIT_WATTS}" 2>&1); then
       echo "  ✓ Power limit set to ${POWER_LIMIT_WATTS}W"
     else
       echo "  ✗ Failed to set power limit to ${POWER_LIMIT_WATTS}W"
-      echo "  Make sure persistence mode is enabled and you have root access."
+      echo "  Error: ${output}"
+      echo ""
+      echo "  Default power limit: ${default_pl}W"
+      echo "  Make sure the value is within the GPU's supported range."
+      echo "  Run '$0 --check' to see supported limits."
       exit 1
     fi
 
