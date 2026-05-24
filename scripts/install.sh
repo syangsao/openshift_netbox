@@ -1,74 +1,108 @@
 #!/usr/bin/env bash
 # =============================================================================
-# NetBox 3.4.1 — OpenShift One-Click Install
+# NetBox — OpenShift One-Click Install
 # =============================================================================
-# Deploys NetBox 3.4.1 with PostgreSQL, Redis (sessions + cache) and a TLS
-# route on an OpenShift cluster.  All manifests are generated inline so no
-# external files are needed — just point the script at your registry and go.
+# Pulls the NetBox community image from Docker Hub, pushes it to your Quay
+# registry, then deploys it on OpenShift with PostgreSQL, Redis, and a TLS
+# route.  All manifests are generated inline — no external files needed.
 #
-# Usage:
-#   ./scripts/install.sh [OPTIONS]
+# Edit the variables below to match your environment, then run:
+#   ./scripts/install.sh
 #
-# Options:
-#   --registry IMAGE            Full image path (default: auto from env)
-#   --namespace NAME            OpenShift namespace  (default: netbox)
-#   --admin-password PASS       Admin password       (default: random)
-#   --storage-class CLASS       PVC storage class    (default: auto-detect)
-#   --pull-secret NAME          ImagePullSecret name (default: create new)
-#   --pull-secret-server URL    Registry server for pull secret
-#   --pull-secret-user USER     Registry user for pull secret
-#   --pull-secret-pass PASS     Registry password for pull secret
-#   --dry-run                   Generate manifests only, do not apply
-#   --help                      Show this help
+# Or override any variable via CLI flags:
+#   ./scripts/install.sh --netbox-version 3.4.1 --quay-host quay.io/myorg
 #
 # Prerequisites:
 #   - oc CLI authenticated to your OpenShift cluster
-#   - A container image of NetBox 3.4.1 in your registry
+#   - podman CLI installed (for pulling & pushing images)
+#   - podman logged in to both Docker Hub and your Quay registry
 # =============================================================================
 set -euo pipefail
 
-# ── Defaults ──────────────────────────────────────────────────────────────────
-NAMESPACE="netbox"
-NETBOX_IMAGE=""
-ADMIN_PASSWORD=""
-STORAGE_CLASS="nfs-csidriver3"
-PULL_SECRET_NAME="netbox-image-pull-secret"
-PULL_SECRET_SERVER=""
-PULL_SECRET_USER=""
-PULL_SECRET_PASS=""
-DRY_RUN=false
-GENERATE_PULL_SECRET=false
+# ── Configuration Variables ───────────────────────────────────────────────────
+# Edit these to match your environment
+
+# NetBox version to deploy
+NETBOX_VERSION="${NETBOX_VERSION:-3.4.1}"
+
+# Quay registry hostname (no https:// prefix)
+QUAY_HOST="${QUAY_HOST:-registry-quay-quay-enterprise.apps.luke.syangsao.net}"
+
+# Quay repository path (e.g. openshift/netbox)
+QUAY_REPO="${QUAY_REPO:-openshift/netbox}"
+
+# Quay robot account credentials for pull secret + image push
+QUAY_USER="${QUAY_USER:-openshift+robot}"
+QUAY_PASS="${QUAY_PASS:-AUCHW1GNI5GD1LJIDS8FTKQNJ4460NJW972PF6YKWM2MQGPF2FG7XJ3Z5ZEARC9P}"
+
+# Docker Hub source image (community netbox image)
+SOURCE_REGISTRY="${SOURCE_REGISTRY:-docker.io}"
+SOURCE_REPO="${SOURCE_REPO:-netboxcommunity/netbox}"
+
+# OpenShift namespace
+NAMESPACE="${NAMESPACE:-netbox}"
+
+# Admin password (default: admin)
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
+
+# PVC storage class
+STORAGE_CLASS="${STORAGE_CLASS:-nfs-csidriver3}"
+
+# Image pull secret name
+PULL_SECRET_NAME="${PULL_SECRET_NAME:-netbox-image-pull-secret}"
+
+# ── Derived Variables ─────────────────────────────────────────────────────────
+SOURCE_IMAGE="${SOURCE_REGISTRY}/${SOURCE_REPO}:latest-${NETBOX_VERSION}"
+NETBOX_IMAGE="${QUAY_HOST}/${QUAY_REPO}:${NETBOX_VERSION}"
 
 # ── Usage ─────────────────────────────────────────────────────────────────────
 usage() {
-    sed -n '2,/^# Usage/ p' "$0" | grep '^#' | sed 's/^# \?//'
+    cat <<USAGE
+Usage: $0 [OPTIONS]
+
+Pulls the NetBox community image from Docker Hub, pushes it to your Quay
+registry, and deploys it on OpenShift.
+
+Options:
+  --netbox-version VERSION   NetBox version     (default: ${NETBOX_VERSION})
+  --quay-host HOST           Quay hostname      (default: ${QUAY_HOST})
+  --quay-repo REPO           Quay repo path     (default: ${QUAY_REPO})
+  --quay-user USER           Quay username      (default: ${QUAY_USER})
+  --quay-pass PASS           Quay password      (default: set)
+  --namespace NAME           OpenShift namespace (default: ${NAMESPACE})
+  --admin-password PASS      Admin password     (default: admin)
+  --storage-class CLASS      PVC storage class  (default: ${STORAGE_CLASS})
+  --dry-run                  Generate manifests only, do not apply
+  --help                     Show this help
+
+Environment variables can also be used (e.g. export QUAY_HOST=quay.io/myorg).
+USAGE
     exit 0
 }
 
 # ── Parse args ────────────────────────────────────────────────────────────────
+DRY_RUN=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --registry)         NETBOX_IMAGE="$2";        shift 2 ;;
-        --namespace)        NAMESPACE="$2";           shift 2 ;;
-        --admin-password)   ADMIN_PASSWORD="$2";      shift 2 ;;
-        --storage-class)    STORAGE_CLASS="$2";       shift 2 ;;
-        --pull-secret)      PULL_SECRET_NAME="$2";    shift 2 ;;
-        --pull-secret-server) PULL_SECRET_SERVER="$2"; shift 2 ;;
-        --pull-secret-user) PULL_SECRET_USER="$2";    shift 2 ;;
-        --pull-secret-pass) PULL_SECRET_PASS="$2";    shift 2 ;;
-        --dry-run)          DRY_RUN=true;             shift   ;;
+        --netbox-version)   NETBOX_VERSION="$2";     shift 2 ;;
+        --quay-host)        QUAY_HOST="$2";          shift 2 ;;
+        --quay-repo)        QUAY_REPO="$2";          shift 2 ;;
+        --quay-user)        QUAY_USER="$2";          shift 2 ;;
+        --quay-pass)        QUAY_PASS="$2";          shift 2 ;;
+        --namespace)        NAMESPACE="$2";          shift 2 ;;
+        --admin-password)   ADMIN_PASSWORD="$2";     shift 2 ;;
+        --storage-class)    STORAGE_CLASS="$2";      shift 2 ;;
+        --dry-run)          DRY_RUN=true;            shift   ;;
         --help)             usage ;;
         *)                  echo "Unknown option: $1"; usage ;;
     esac
 done
 
-# ── Validate ──────────────────────────────────────────────────────────────────
-if [[ -z "$NETBOX_IMAGE" ]]; then
-    echo "ERROR: --registry is required."
-    echo "  Example: --registry quay.io/myorg/netbox:3.4.1"
-    exit 1
-fi
+# Recompute derived vars after arg parsing
+SOURCE_IMAGE="${SOURCE_REGISTRY}/${SOURCE_REPO}:latest-${NETBOX_VERSION}"
+NETBOX_IMAGE="${QUAY_HOST}/${QUAY_REPO}:${NETBOX_VERSION}"
 
+# ── Validate ──────────────────────────────────────────────────────────────────
 if ! command -v oc &>/dev/null; then
     echo "ERROR: 'oc' CLI not found. Install or authenticate first."
     exit 1
@@ -78,7 +112,25 @@ fi
 banner() { echo ""; echo "═══════════════════════════════════════════════════════════"; echo "  $1"; echo "═══════════════════════════════════════════════════════════"; }
 step()   { echo ""; echo "▶ $1"; }
 
-# ── Step 0: Generate credentials ─────────────────────────────────────────────
+# ── Summary ───────────────────────────────────────────────────────────────────
+banner "NetBox ${NETBOX_VERSION} — OpenShift Install"
+echo ""
+echo "  Source image:   ${SOURCE_IMAGE}"
+echo "  Quay target:    ${NETBOX_IMAGE}"
+echo "  Quay host:      ${QUAY_HOST}"
+echo "  Quay repo:      ${QUAY_REPO}"
+echo "  Quay user:      ${QUAY_USER}"
+echo "  Namespace:      ${NAMESPACE}"
+echo "  Admin password: ${ADMIN_PASSWORD}"
+echo "  Storage class:  ${STORAGE_CLASS}"
+echo ""
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo "DRY RUN — no changes will be made."
+    echo ""
+fi
+
+# ── Step 0: Generate credentials ──────────────────────────────────────────────
 step "Generating credentials"
 
 DB_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
@@ -86,24 +138,39 @@ REDIS_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 REDIS_CACHE_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(64))")
 
-if [[ -z "$ADMIN_PASSWORD" ]]; then
-    ADMIN_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(24))")
-fi
-
 echo "  DB password    : $(echo "$DB_PASSWORD" | head -c 16)…"
 echo "  Redis password : $(echo "$REDIS_PASSWORD" | head -c 16)…"
 echo "  Redis cache pw : $(echo "$REDIS_CACHE_PASSWORD" | head -c 16)…"
-echo "  Admin password : $ADMIN_PASSWORD"
+echo "  Admin password : ${ADMIN_PASSWORD}"
 
-# ── Auto-detect storage class (only if not explicitly set) ───────────────────
-if [[ "$STORAGE_CLASS" == "auto" ]]; then
-    step "Detecting storage class"
-    STORAGE_CLASS=$(oc get sc -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-    if [[ -z "$STORAGE_CLASS" ]]; then
-        echo "WARNING: Could not auto-detect storage class. Falling back to 'nfs-csidriver3'."
-        STORAGE_CLASS="nfs-csidriver3"
-    fi
-    echo "  Storage class: $STORAGE_CLASS"
+# ── Step 0.5: Pull & Push image ──────────────────────────────────────────────
+step "Pulling ${SOURCE_IMAGE}"
+
+if command -v podman &>/dev/null; then
+    engine="podman"
+elif command -v docker &>/dev/null; then
+    engine="docker"
+else
+    echo "ERROR: Neither 'podman' nor 'docker' found. Install one to pull/push images."
+    exit 1
+fi
+
+$engine pull "$SOURCE_IMAGE"
+
+step "Tagging & pushing to ${NETBOX_IMAGE}"
+$engine tag "$SOURCE_IMAGE" "$NETBOX_IMAGE"
+
+# Login to Quay if needed
+if [[ -n "$QUAY_PASS" ]]; then
+    echo "$QUAY_PASS" | $engine login -u "$QUAY_USER" -p - "${QUAY_HOST}" 2>/dev/null || true
+fi
+
+$engine push "$NETBOX_IMAGE"
+echo "  ✓ Image pushed to ${NETBOX_IMAGE}"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    banner "DRY RUN complete"
+    exit 0
 fi
 
 # ── Step 1: Create namespace ─────────────────────────────────────────────────
@@ -119,20 +186,17 @@ EOF
 echo "  ✓ Namespace ready"
 
 # ── Step 2: Image pull secret ────────────────────────────────────────────────
-if [[ -n "$PULL_SECRET_SERVER" && -n "$PULL_SECRET_USER" && -n "$PULL_SECRET_PASS" ]]; then
-    step "Creating image pull secret"
-    oc create secret docker-registry "$PULL_SECRET_NAME" \
-        --docker-server="$PULL_SECRET_SERVER" \
-        --docker-username="$PULL_SECRET_USER" \
-        --docker-password="$PULL_SECRET_PASS" \
-        --docker-email="install@netbox" \
-        -n "$NAMESPACE" \
-        --dry-run=client -o yaml | oc apply -f -
-    echo "  ✓ Pull secret created"
-elif [[ -n "$PULL_SECRET_SERVER" ]]; then
-    echo "WARNING: --pull-secret-server provided without user/pass — skipping pull secret."
-    echo "  Create it manually or re-run with --pull-secret-user and --pull-secret-pass."
-fi
+step "Creating image pull secret"
+
+oc create secret docker-registry "$PULL_SECRET_NAME" \
+    --docker-server="$QUAY_HOST" \
+    --docker-username="$QUAY_USER" \
+    --docker-password="$QUAY_PASS" \
+    --docker-email="install@netbox" \
+    -n "$NAMESPACE" \
+    --dry-run=client -o yaml | oc apply -f -
+
+echo "  ✓ Pull secret created"
 
 # ── Step 3: Secret ───────────────────────────────────────────────────────────
 step "Creating Secret (netbox-env)"
@@ -173,7 +237,6 @@ echo "  ✓ Secret created"
 
 # ── Restart pods to pick up new secret ────────────────────────────────────────
 # If deployments already exist, rolling them ensures pods get fresh env vars.
-# Without this, pods keep cached env from the old secret and DB passwords diverge.
 step "Syncing deployments with new credentials"
 for deploy in netbox-postgres netbox-redis netbox-redis-cache netbox; do
     if oc get deploy "$deploy" -n "$NAMESPACE" &>/dev/null; then
@@ -512,7 +575,7 @@ EOF
 echo "  ✓ Redis (cache) deployed"
 
 # ── Step 8: NetBox app ───────────────────────────────────────────────────────
-step "Deploying NetBox 3.4.1"
+step "Deploying NetBox ${NETBOX_VERSION}"
 
 cat <<EOF | oc apply -f -
 apiVersion: v1
@@ -764,12 +827,12 @@ else
 fi
 
 # ── Final summary ────────────────────────────────────────────────────────────
-banner "✅ DEPLOYMENT COMPLETE — NetBox 3.4.1 is running"
+banner "✅ DEPLOYMENT COMPLETE — NetBox ${NETBOX_VERSION} is running"
 
 echo ""
 echo "  📍 URL:         https://$ROUTE_URL"
 echo "  👤 Username:    admin"
-echo "  🔑 Password:    $ADMIN_PASSWORD"
+echo "  🔑 Password:    ${ADMIN_PASSWORD}"
 echo ""
 echo "  📦 Pods:"
 oc get pods -n "$NAMESPACE" -o wide
@@ -781,6 +844,5 @@ echo "  💾 Persistent Volumes:"
 oc get pvc -n "$NAMESPACE"
 echo ""
 echo "───────────────────────────────────────────────────────────"
-echo "  Save the admin password — it won't be shown again!"
-echo "  To change it later, see the README troubleshooting section."
+echo "  To change the admin password later, see the README troubleshooting section."
 echo "───────────────────────────────────────────────────────────"
