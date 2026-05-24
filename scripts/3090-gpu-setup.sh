@@ -79,20 +79,35 @@ show_current_settings() {
   echo "============================================================"
   echo ""
 
-  # Power
+  # Power management (maps to nvmlDeviceSetPowerManagementLimit)
   echo "--- Power ---"
-  nvidia-smi --query-gpu=power.draw,power.limit --format=csv,noheader,header=once 2>/dev/null || \
-    echo "  unavailable"
-  local pm_mode
+  pl_default=$(nvidia-smi -q 2>/dev/null | grep -A2 "Power Management" | grep "Default Power" | grep -oP '^\s+\K[\d.]+' || echo "")
+  pl_current=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
   pm_mode=$(nvidia-smi -q 2>/dev/null | grep "Persistence Mode" | head -1 | awk '{print $NF}' || echo "unknown")
-  echo "  Persistence mode: ${pm_mode}"
+  echo "  Default power limit:  ${pl_default}W"
+  echo "  Current power limit:  ${pl_current}"
+  echo "  Persistence mode:     ${pm_mode}"
 
   echo ""
 
-  # Clocks & offsets (what --apply changes)
-  echo "--- Clocks & Offsets ---"
-  nvidia-smi --query-gpu=clocks.current.graphics,clocks.current.memory,clocks.max.graphics,clocks.max.memory,clocks.offset.graphics,clocks.offset.memory --format=csv,noheader,header=once 2>/dev/null || \
-    echo "  unavailable"
+  # Locked clocks (maps to nvmlDeviceSetGpuLockedClocks)
+  echo "--- Locked Clocks ---"
+  clocks_min=$(nvidia-smi -q -d CLOCK -e 1 2>/dev/null | grep "Graphics" | head -1 | grep -oP 'min = \K[\d.]+' || echo "")
+  clocks_max=$(nvidia-smi -q -d CLOCK -e 1 2>/dev/null | grep "Graphics" | head -1 | grep -oP 'max = \K[\d.]+' || echo "")
+  if [[ -n "$clocks_min" && -n "$clocks_max" ]]; then
+    echo "  Locked range: ${clocks_min} - ${clocks_max} MHz"
+  else
+    echo "  Locked range: unavailable"
+  fi
+
+  echo ""
+
+  # Clock offsets (maps to nvmlDeviceSetClockOffsets)
+  echo "--- Clock Offsets ---"
+  off_graphics=$(nvidia-smi --query-gpu=clocks.offset.graphics --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
+  off_memory=$(nvidia-smi --query-gpu=clocks.offset.memory --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
+  echo "  Core offset:  ${off_graphics}"
+  echo "  Memory offset: ${off_memory}"
 
   echo ""
   echo "============================================================"
