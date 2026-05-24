@@ -15,14 +15,15 @@
 #   - Applies +1000MHz memory overclock
 #   - Enables persistence mode
 #
-# Usage: ./3090-gpu-setup.sh [--check | --save | --apply | --restore]
+# Usage: ./3090-gpu-setup.sh [--check | --save | --apply | --restore | --set-power WATTS]
 #
 # Options:
-#   --check    Show current GPU settings (power, clocks, offsets)
-#   --save     Save current settings to ~/.3090-gpu-backup (default: ./gpu-backup.txt)
-#   --apply    Apply undervolt/overclock settings (default action)
-#   --restore  Restore previously saved settings
-#   --backup   PATH  Set custom backup file path (default: ~/.3090-gpu-backup)
+#   --check         Show current GPU settings (power, clocks, offsets)
+#   --save          Save current settings to ~/.3090-gpu-backup (default: ./gpu-backup.txt)
+#   --apply         Apply undervolt/overclock settings (default action)
+#   --restore       Restore previously saved settings
+#   --set-power W   Set power limit to W watts (e.g. --set-power 350)
+#   --backup PATH   Set custom backup file path (default: ~/.3090-gpu-backup)
 #
 # Run as root or with sudo on a machine with NVIDIA drivers installed.
 # =============================================================================
@@ -30,6 +31,7 @@ set -euo pipefail
 
 BACKUP_FILE="${HOME}/.3090-gpu-backup"
 ACTION="apply"
+POWER_LIMIT_WATTS=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -50,13 +52,22 @@ while [[ $# -gt 0 ]]; do
       ACTION="restore"
       shift
       ;;
+    --set-power)
+      ACTION="set-power"
+      if [[ -z "${2:-}" ]] || ! [[ "$2" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: --set-power requires a numeric wattage value (e.g. --set-power 350)"
+        exit 1
+      fi
+      POWER_LIMIT_WATTS="$2"
+      shift 2
+      ;;
     --backup)
       BACKUP_FILE="$2"
       shift 2
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--check | --save | --apply | --restore] [--backup PATH]"
+      echo "Usage: $0 [--check | --save | --apply | --restore | --set-power WATTS] [--backup PATH]"
       exit 1
       ;;
   esac
@@ -71,9 +82,23 @@ show_current_settings() {
   echo "============================================================"
   echo ""
 
-  # GPU info
+  # GPU info with power limit
   nvidia-smi --query-gpu=name,index,pstate,power.draw,power.limit,clocks.current.graphics,clocks.current.memory,clocks.max.graphics,clocks.max.memory,clocks.offset.graphics,clocks.offset.memory --format=csv,noheader,header=once 2>/dev/null || \
     nvidia-smi -q | grep -E 'Name|Power Draw|Power Limit|Graphics|Memory|Offset'
+
+  echo ""
+
+  # Power limit summary
+  echo "--- Power Limit ---"
+  local power_limit mw
+  power_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
+  if [[ "$power_limit" != "unknown" ]]; then
+    mw=$(nvidia-smi --query-gpu=power.management.allowed --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "N/A")
+    echo "  Power limit:       ${power_limit}"
+    echo "  Power management:  ${mw}"
+  else
+    echo "  Power limit:       unknown (nvidia-smi query failed)"
+  fi
 
   echo ""
 
@@ -191,6 +216,39 @@ case "${ACTION}" in
     ;;
   restore)
     restore_settings
+    exit 0
+    ;;
+  set-power)
+    # Enable persistence mode if not already enabled
+    nvidia-smi -pm 1 2>/dev/null || true
+
+    # Convert watts to milliwatts (nvidia-smi expects mW)
+    local_mw=$((POWER_LIMIT_WATTS * 1000))
+
+    echo "Setting power limit to ${POWER_LIMIT_WATTS}W (${local_mw}mW)..."
+
+    # Get current power limit before change
+    local old_limit
+    old_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
+    echo "  Previous power limit: ${old_limit}"
+
+    # Apply the new power limit
+    nvidia-smi -pl "${POWER_LIMIT_WATTS}" 2>/dev/null
+    if [[ $? -eq 0 ]]; then
+      echo "  ✓ Power limit set to ${POWER_LIMIT_WATTS}W"
+    else
+      echo "  ✗ Failed to set power limit to ${POWER_LIMIT_WATTS}W"
+      echo "  Make sure persistence mode is enabled and you have root access."
+      exit 1
+    fi
+
+    echo ""
+    echo "Current GPU status after change:"
+    nvidia-smi --query-gpu=name,power.draw,power.limit,clocks.current.graphics,clocks.current.memory --format=csv,noheader,header=once 2>/dev/null || true
+
+    echo ""
+    echo "To check full settings:     $0 --check"
+    echo "To restore original settings: $0 --restore --backup ${BACKUP_FILE}"
     exit 0
     ;;
   apply)
