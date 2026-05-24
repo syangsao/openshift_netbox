@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Single RTX 3090 — GPU Undervolt, Overclock & Power Limit Setup
+# Single RTX 3090 — GPU Clock & Power Limit Setup
 # =============================================================================
 # Adapted from club-3090 discussion #152
 # https://github.com/noonghunna/club-3090/discussions/152
@@ -8,22 +8,24 @@
 # Original script by @ampersandru configured two GPUs (3090 + 5060 Ti).
 # This version is for a single RTX 3090 only.
 #
-# What it does:
-#   - Sets power limit to 330W
+# What --apply does:
 #   - Locks GPU core clocks to 1850MHz
 #   - Applies +200MHz core overclock
 #   - Applies +1000MHz memory overclock
 #   - Enables persistence mode
+#   (Does NOT touch power limit — use --set-power or --set-power-scale)
 #
-# Usage: ./3090-gpu-setup.sh [--check | --save | --apply | --restore | --set-power WATTS]
+# Usage: ./3090-gpu-setup.sh [OPTIONS]
 #
 # Options:
-#   --check         Show current GPU settings (power, clocks, offsets)
-#   --save          Save current settings to ~/.3090-gpu-backup (default: ./gpu-backup.txt)
-#   --apply         Apply undervolt/overclock settings (default action)
-#   --restore       Restore previously saved settings
-#   --set-power W   Set power limit to W watts (e.g. --set-power 350)
-#   --backup PATH   Set custom backup file path (default: ~/.3090-gpu-backup)
+#   --check                 Show current GPU settings (power, clocks, offsets)
+#   --save                  Save current settings to backup file
+#   --apply                 Apply clock offsets/locks (default action)
+#   --restore               Restore previously saved settings
+#   --set-power W           Set power limit to W watts (e.g. --set-power 350)
+#   --set-power-scale S     Set power scale per P-state (e.g. --set-power-scale 350:300:250:200:150:100:80:60:40)
+#                           Format: P0:P1:P2:P3:P4:P5:P6:P7:P8 (9 values, colon-separated)
+#   --backup PATH           Set custom backup file path (default: ~/.3090-gpu-backup)
 #
 # Run as root or with sudo on a machine with NVIDIA drivers installed.
 # =============================================================================
@@ -32,6 +34,7 @@ set -euo pipefail
 BACKUP_FILE="${HOME}/.3090-gpu-backup"
 ACTION="apply"
 POWER_LIMIT_WATTS=""
+POWER_SCALE=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -61,6 +64,17 @@ while [[ $# -gt 0 ]]; do
       POWER_LIMIT_WATTS="$2"
       shift 2
       ;;
+    --set-power-scale)
+      ACTION="set-power-scale"
+      if [[ -z "${2:-}" ]]; then
+        echo "ERROR: --set-power-scale requires colon-separated wattage values"
+        echo "  Format: P0:P1:P2:P3:P4:P5:P6:P7:P8"
+        echo "  Example: --set-power-scale 350:300:250:200:150:100:80:60:40"
+        exit 1
+      fi
+      POWER_SCALE="$2"
+      shift 2
+      ;;
     --backup)
       if [[ -z "${2:-}" ]]; then
         echo "ERROR: --backup requires a file path (e.g. --backup /path/to/file)"
@@ -71,7 +85,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--check | --save | --apply | --restore | --set-power WATTS] [--backup PATH]"
+      echo "Usage: $0 [--check | --save | --apply | --restore | --set-power W | --set-power-scale S] [--backup PATH]"
       exit 1
       ;;
   esac
@@ -203,6 +217,24 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Helper: Ensure persistence mode is enabled
+# ---------------------------------------------------------------------------
+ensure_persistence() {
+  pm_status=$(nvidia-smi -q 2>/dev/null | grep "Persistence Mode" | head -1 | awk '{print $NF}' || echo "unknown")
+  if [[ "$pm_status" != "Enabled" ]]; then
+    echo "Enabling persistence mode..."
+    if ! nvidia-smi -pm 1 2>/dev/null; then
+      echo "✗ Failed to enable persistence mode. Run as root/sudo."
+      exit 1
+    fi
+    sleep 1
+    echo "  ✓ Persistence mode enabled"
+  else
+    echo "Persistence mode already enabled."
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Main action
 # ---------------------------------------------------------------------------
 
@@ -221,31 +253,16 @@ case "${ACTION}" in
     exit 0
     ;;
   set-power)
-    # Check persistence mode status
-    pm_status=$(nvidia-smi -q 2>/dev/null | grep "Persistence Mode" | head -1 | awk '{print $NF}' || echo "unknown")
-    echo "Persistence Mode: ${pm_status}"
+    ensure_persistence
 
-    if [[ "$pm_status" != "Enabled" ]]; then
-      echo "Enabling persistence mode..."
-      if ! nvidia-smi -pm 1 2>/dev/null; then
-        echo "✗ Failed to enable persistence mode. Run as root/sudo."
-        exit 1
-      fi
-      sleep 1
-      echo "  ✓ Persistence mode enabled"
-    fi
-
-    # Get current power limit before change
     old_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
     echo "  Previous power limit: ${old_limit}"
 
-    # Get default/max power limit from GPU
     default_pl=$(nvidia-smi -q 2>/dev/null | grep "Power Limit" | head -1 | grep -oP '^\s+\K[\d.]+' || echo "")
 
     echo ""
     echo "Setting power limit to ${POWER_LIMIT_WATTS}W..."
 
-    # Apply the new power limit (nvidia-smi -pl takes watts as integer)
     if output=$(nvidia-smi -pl "${POWER_LIMIT_WATTS}" 2>&1); then
       echo "  ✓ Power limit set to ${POWER_LIMIT_WATTS}W"
     else
@@ -261,6 +278,73 @@ case "${ACTION}" in
     echo ""
     echo "Current GPU status after change:"
     nvidia-smi --query-gpu=name,power.draw,power.limit,clocks.current.graphics,clocks.current.memory --format=csv,noheader,header=once 2>/dev/null || true
+
+    echo ""
+    echo "To check full settings:     $0 --check"
+    echo "To restore original settings: $0 --restore --backup ${BACKUP_FILE}"
+    exit 0
+    ;;
+  set-power-scale)
+    # Parse colon-separated values
+    IFS=':' read -ra POWER_VALUES <<< "${POWER_SCALE}"
+    num_values=${#POWER_VALUES[@]}
+
+    if [[ "$num_values" -ne 9 ]]; then
+      echo "ERROR: --set-power-scale requires exactly 9 values (P0 through P8)"
+      echo "  Got ${num_values} values: ${POWER_SCALE}"
+      echo "  Format: P0:P1:P2:P3:P4:P5:P6:P7:P8"
+      echo "  Example: --set-power-scale 350:300:250:200:150:100:80:60:40"
+      exit 1
+    fi
+
+    # Validate all values are positive integers
+    for i in "${!POWER_VALUES[@]}"; do
+      val="${POWER_VALUES[$i]}"
+      if ! [[ "$val" =~ ^[0-9]+$ ]] || [[ "$val" -le 0 ]]; then
+        echo "ERROR: P${i} value '${val}' is not a valid positive integer"
+        exit 1
+      fi
+    done
+
+    ensure_persistence
+
+    echo ""
+    echo "Setting power scale (per P-state):"
+    for i in "${!POWER_VALUES[@]}"; do
+      echo "  P${i}: ${POWER_VALUES[$i]}W"
+    done
+
+    # Save current power limit before changes
+    old_limit=$(nvidia-smi --query-gpu=power.limit --format=csv,noheader 2>/dev/null | tr -d ' ' || echo "unknown")
+    echo ""
+    echo "  Previous power limit (P0): ${old_limit}"
+
+    echo ""
+    echo "Applying power scale..."
+
+    # Apply P0 first (the active power limit)
+    if output=$(nvidia-smi -pl "${POWER_VALUES[0]}" 2>&1); then
+      echo "  ✓ P0 set to ${POWER_VALUES[0]}W"
+    else
+      echo "  ✗ Failed to set P0 to ${POWER_VALUES[0]}W"
+      echo "  Error: ${output}"
+      exit 1
+    fi
+
+    # For P1-P8, use nvidia-smi --power-limit-pstates if available
+    # This sets power limits for non-active performance states
+    if nvidia-smi --power-limit-pstates "${POWER_SCALE}" 2>/dev/null; then
+      echo "  ✓ Power scale applied for P1-P8"
+    else
+      echo ""
+      echo "  Note: --power-limit-pstates not supported by this driver."
+      echo "  P0 is set to ${POWER_VALUES[0]}W. P1-P8 will use driver defaults."
+      echo "  To set all states equally: use --set-power ${POWER_VALUES[0]}"
+    fi
+
+    echo ""
+    echo "Current GPU status after change:"
+    nvidia-smi --query-gpu=name,pstate,power.draw,power.limit,clocks.current.graphics,clocks.current.memory --format=csv,noheader,header=once 2>/dev/null || true
 
     echo ""
     echo "To check full settings:     $0 --check"
@@ -318,12 +402,12 @@ try:
 
     # ==========================================
     # GPU 0: RTX 3090 (single GPU)
+    # Clock offsets only — power is set separately
     # ==========================================
     try:
         dev_3090 = nvmlDeviceGetHandleByIndex(0)
 
-        # 330W Limit & 1850MHz Lock (efficiency sweet spot for the 3090)
-        nvmlDeviceSetPowerManagementLimit(dev_3090, 330000)
+        # Lock GPU core clocks to 1850MHz
         nvmlDeviceSetGpuLockedClocks(dev_3090, 210, 1850)
 
         # Core Offset (+200MHz safe Ampere start)
@@ -342,7 +426,8 @@ try:
         info_mem_0.clockOffsetMHz = 1000
         nvmlDeviceSetClockOffsets(dev_3090, byref(info_mem_0))
 
-        print("[SUCCESS] RTX 3090 Configured (330W | 1850MHz | +200 Core | +1000 Mem)")
+        print("[SUCCESS] RTX 3090 Configured (1850MHz lock | +200 Core | +1000 Mem)")
+        print("  Note: Power limit not changed. Use --set-power or --set-power-scale.")
     except Exception as e:
         print(f"[FAIL] Could not configure GPU 0 (3090): {e}")
 
@@ -353,7 +438,7 @@ finally:
 EOF
 
     # 4. Execute via ephemeral Docker container
-    echo "Applying settings to GPU..."
+    echo "Applying clock settings to GPU..."
     docker run --rm \
       --privileged \
       --network host \
@@ -368,9 +453,11 @@ EOF
     rm /tmp/gpu_undervolt.py
 
     echo ""
-    echo "GPU configuration complete."
+    echo "GPU clock configuration complete."
     echo "Backup saved to: ${BACKUP_FILE}"
     echo ""
+    echo "To set power limit:          $0 --set-power 350"
+    echo "To set power scale:          $0 --set-power-scale 350:300:250:200:150:100:80:60:40"
     echo "To restore original settings: $0 --restore --backup ${BACKUP_FILE}"
     echo "To check current settings:     $0 --check"
     ;;
