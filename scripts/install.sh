@@ -45,8 +45,13 @@ NAMESPACE="${NAMESPACE:-netbox}"
 # Admin password (default: admin)
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
 
-# PVC storage class
-STORAGE_CLASS="${STORAGE_CLASS:-nfs-csidriver3}"
+# PVC storage class — auto-detect cluster default, override with env var or --storage-class
+if [[ -z "${STORAGE_CLASS:-}" ]]; then
+  STORAGE_CLASS=$(oc get sc -o name --sort-by=.metadata.creationTimestamp 2>/dev/null | grep -m1 '(default)' | sed 's|storageclass/||;s|(default)||g' || true)
+  if [[ -z "$STORAGE_CLASS" ]]; then
+    STORAGE_CLASS=$(oc get sc -o name 2>/dev/null | head -1 | sed 's|storageclass/||' || echo "nfs-csi")
+  fi
+fi
 
 # Image pull secret name
 PULL_SECRET_NAME="${PULL_SECRET_NAME:-netbox-image-pull-secret}"
@@ -71,7 +76,7 @@ Options:
   --quay-pass PASS           Quay password      (default: set)
   --namespace NAME           OpenShift namespace (default: ${NAMESPACE})
   --admin-password PASS      Admin password     (default: admin)
-  --storage-class CLASS      PVC storage class  (default: ${STORAGE_CLASS})
+  --storage-class CLASS      PVC storage class  (default: auto-detect)
   --dry-run                  Generate manifests only, do not apply
   --help                     Show this help
 
@@ -122,7 +127,7 @@ echo "  Quay repo:      ${QUAY_REPO}"
 echo "  Quay user:      ${QUAY_USER}"
 echo "  Namespace:      ${NAMESPACE}"
 echo "  Admin password: ${ADMIN_PASSWORD}"
-echo "  Storage class:  ${STORAGE_CLASS}"
+echo "  Storage class:  ${STORAGE_CLASS:-<auto-detect>}"
 echo ""
 
 if [[ "$DRY_RUN" == "true" ]]; then
