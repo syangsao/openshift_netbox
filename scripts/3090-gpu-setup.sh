@@ -60,6 +60,9 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       BACKUP_FILE="$2"
+      if [[ "$ACTION" == "apply" ]]; then
+        ACTION="save"
+      fi
       shift 2
       ;;
     *)
@@ -250,7 +253,6 @@ case "${ACTION}" in
     exit 0
     ;;
   save)
-    show_current_settings
     save_settings
     exit 0
     ;;
@@ -259,6 +261,23 @@ case "${ACTION}" in
     exit 0
     ;;
   apply)
+    # Prompt for confirmation before applying
+    echo ""
+    echo "This will apply the following GPU settings:"
+    echo "  - Lock GPU core clocks to 1850MHz"
+    echo "  - Core offset: +200MHz"
+    echo "  - Memory offset: +1000MHz"
+    echo ""
+    echo "Current settings:"
+    nvidia-smi --query-gpu=name,clocks.current.graphics,clocks.current.memory,power.draw,power.limit --format=csv,noheader,header=once 2>/dev/null || true
+    echo ""
+    read -r -p "Apply these settings? [y/N] " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+      echo "Aborted."
+      exit 0
+    fi
+    echo ""
+
     # Check if backup exists, offer to save first
     if [[ ! -f "${BACKUP_FILE}" ]]; then
       echo "No backup found at ${BACKUP_FILE}."
