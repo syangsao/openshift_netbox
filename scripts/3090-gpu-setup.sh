@@ -62,6 +62,10 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --backup)
+      if [[ -z "${2:-}" ]]; then
+        echo "ERROR: --backup requires a file path (e.g. --backup /path/to/file)"
+        exit 1
+      fi
       BACKUP_FILE="$2"
       shift 2
       ;;
