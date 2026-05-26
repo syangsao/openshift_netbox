@@ -665,7 +665,7 @@ spec:
             httpGet:
               path: /login/
               port: 8080
-            initialDelaySeconds: 90
+            initialDelaySeconds: 180
             periodSeconds: 15
             timeoutSeconds: 3
             failureThreshold: 10
@@ -673,7 +673,7 @@ spec:
             httpGet:
               path: /login/
               port: 8080
-            initialDelaySeconds: 120
+            initialDelaySeconds: 300
             periodSeconds: 30
             timeoutSeconds: 3
           resources:

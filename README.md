@@ -123,6 +123,8 @@ Quick references:
 
 | Error | Likely cause | Fix |
 |---|---|---|
+| `CrashLoopBackOff` — netbox pod | Liveness probe kills container before migrations finish | Increase `initialDelaySeconds` to 180 (readiness) / 300 (liveness) |
+| `CrashLoopBackOff` — netbox pod | Incomplete DB schema from interrupted migrations | Delete PVCs to force fresh DB, or increase probe delays |
 | `ImagePullBackOff` | Bad pull secret or image not in registry | Check secret, verify image exists |
 | `TypeError: unhashable type: 'dict'` | DATABASE/REDIS in wrong config file | Move to `configuration.docker.py` |
 | `ModuleNotFoundError: django.utils.itercompat` | NetBox 3.x on Ubuntu 24.04 | Use Ubuntu 22.04 base |
