@@ -819,16 +819,58 @@ echo "  ✓ Redis (cache) ready"
 
 # ── Step 11: Wait for NetBox ─────────────────────────────────────────────────
 step "Waiting for NetBox to start (up to 10 minutes for migrations + superuser)…"
-oc wait --for=condition=ready pod -l app=netbox \
-    -n "$NAMESPACE" --timeout=600s 2>&1 || {
-    echo "  ✗ NetBox not ready. Check logs:"
-    oc logs -l app=netbox -n "$NAMESPACE" -c netbox --tail=30 2>/dev/null
-    oc logs -l app=netbox -n "$NAMESPACE" -c netbox-worker --tail=30 2>/dev/null
+
+NETBOX_POD=""
+NETBOX_READY=false
+ELAPSED=0
+INTERVAL=10
+MAX_WAIT=600
+
+while [[ $ELAPSED -lt $MAX_WAIT ]]; do
+    # Find the current netbox pod
+    NETBOX_POD=$(oc get pod -l app=netbox -n "$NAMESPACE" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+
+    if [[ -z "$NETBOX_POD" ]]; then
+        echo "  ⠋ Waiting for pod to be scheduled… ($ELAPSED/${MAX_WAIT}s)"
+        sleep $INTERVAL
+        ELAPSED=$((ELAPSED + INTERVAL))
+        continue
+    fi
+
+    # Check if pod is ready
+    READY_COUNT=$(oc get pod "$NETBOX_POD" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[*].ready}' 2>/dev/null | tr -d ' ' || true)
+    if [[ "$READY_COUNT" == "true true" ]]; then
+        NETBOX_READY=true
+        break
+    fi
+
+    # Show latest log lines to track progress (migrations, superuser, etc.)
+    LATEST_LOGS=$(oc logs -n "$NAMESPACE" "$NETBOX_POD" -c netbox --tail=3 2>/dev/null || true)
+    if [[ -n "$LATEST_LOGS" ]]; then
+        LAST_LINE=$(echo "$LATEST_LOGS" | tail -1 | sed 's/^[[:space:]]*//' | head -c 80)
+        if [[ -n "$LAST_LINE" && "$LAST_LINE" != "$PREV_LINE" ]]; then
+            echo "  ⠋ $LAST_LINE ($ELAPSED/${MAX_WAIT}s)"
+            PREV_LINE="$LAST_LINE"
+        else
+            echo "  ⠋ Waiting… ($ELAPSED/${MAX_WAIT}s)"
+        fi
+    else
+        echo "  ⠋ Waiting… ($ELAPSED/${MAX_WAIT}s)"
+    fi
+
+    sleep $INTERVAL
+    ELAPSED=$((ELAPSED + INTERVAL))
+done
+
+if [[ "$NETBOX_READY" != "true" ]]; then
+    echo "  ✗ NetBox not ready after ${MAX_WAIT}s. Check logs:"
+    oc logs -n "$NAMESPACE" -l app=netbox -c netbox --tail=30 2>/dev/null
+    oc logs -n "$NAMESPACE" -l app=netbox -c netbox-worker --tail=30 2>/dev/null
     echo ""
     echo "  If the worker sidecar failed, see the troubleshooting section in the README."
     exit 1
-}
-echo "  ✓ NetBox ready"
+fi
+echo "  ✓ NetBox ready (${ELAPSED}s)"
 
 # ── Step 12: Post-install verification ───────────────────────────────────────
 step "Verifying deployment"
