@@ -14,7 +14,8 @@ The `scripts/install.sh` script pulls the NetBox community image, pushes it to y
   --quay-user openshift+robot \
   --quay-pass "YOUR_ROBOT_TOKEN" \
   --namespace netbox \
-  --admin-password admin
+  --admin-password admin \
+  --storage-class nfs-csidriver3
 ```
 
 See [install.sh options](#install-script-options) for all flags.
@@ -42,7 +43,7 @@ See [install.sh options](#install-script-options) for all flags.
 | `--quay-pass PASS` | Quay password/token | (required) |
 | `--namespace NAME` | OpenShift namespace | `netbox` |
 | `--admin-password PASS` | Admin password | `admin` |
-| `--storage-class CLASS` | PVC storage class | Auto-detected |
+| `--storage-class CLASS` | PVC storage class | Auto-detected (cluster default) |
 | `--dry-run` | Show config only, do not deploy | false |
 
 ### What the script deploys
@@ -59,6 +60,10 @@ NetBox Service (port 8080)
     ├── PostgreSQL 18 (persistent, 10Gi)
     ├── Redis Sessions (Valkey 9, persistent, 5Gi)
     └── Redis Cache (Valkey 9, persistent, 5Gi)
+
+PVCs: postgres (10Gi), redis sessions (5Gi), redis cache (5Gi),
+      media (10Gi), reports (1Gi), scripts (1Gi)
+Storage class: auto-detected from cluster default, override with --storage-class
 ```
 
 ---
