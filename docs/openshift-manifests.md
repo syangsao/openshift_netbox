@@ -16,14 +16,7 @@ oc create namespace netbox --dry-run=client -o yaml | oc apply -f -
 
 ## Step 2: Generate Credentials
 
-The `deploy-netbox.sh` script generates random credentials and patches the manifests:
-
-```bash
-cd /path/to/openshift_netbox
-./deploy-netbox.sh
-```
-
-Or manually edit `manifests/netbox-env.yaml` replacing all `CHANGE-ME-*` placeholders:
+Manually edit `manifests/netbox-env.yaml` replacing all `CHANGE-ME-*` placeholders:
 
 ```yaml
 DB_PASSWORD: <CHANGE-ME-db-strong-password>
@@ -234,20 +227,24 @@ oc set env secret/netbox-env SKIP_SUPERUSER=true -n netbox
 oc rollout restart deployment/netbox -n netbox
 ```
 
-## Full Deployment Script
+## Full Deployment
 
-For a one-command deployment, use `deploy-netbox.sh`:
+For a one-command deployment, use `scripts/install.sh`:
 
 ```bash
-export KUBECONFIG=/path/to/kubeconfig
-REPO_DIR=~/openshift_netbox NETBOX_IMAGE=<registry>/<org>/netbox:<version> ./deploy-netbox.sh
+./scripts/install.sh \
+  --netbox-version 3.4.1 \
+  --quay-host registry.example.com \
+  --quay-repo myorg/netbox \
+  --quay-user robot \
+  --quay-pass "YOUR_TOKEN" \
+  --namespace netbox
 ```
 
 The script:
-1. Pulls latest from repo
-2. Generates random credentials
-3. Patches manifests with credentials and image
-4. Creates namespace
-5. Applies all manifests in order
-6. Waits for each component to be ready
-7. Prints admin credentials and route URL
+1. Pulls the NetBox community image from Docker Hub
+2. Pushes it to your registry
+3. Creates namespace, secrets, and ConfigMaps
+4. Applies all manifests in order
+5. Waits for each component to be ready
+6. Prints admin credentials and route URL
