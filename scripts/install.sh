@@ -837,9 +837,10 @@ while [[ $ELAPSED -lt $MAX_WAIT ]]; do
         continue
     fi
 
-    # Check if pod is ready
-    READY_COUNT=$(oc get pod "$NETBOX_POD" -n "$NAMESPACE" -o jsonpath='{.status.containerStatuses[*].ready}' 2>/dev/null | tr -d ' ' || true)
-    if [[ "$READY_COUNT" == "true true" ]]; then
+    # Check if the netbox web container is ready (skip worker — it restarts during migrations)
+    WEB_READY=$(oc get pod "$NETBOX_POD" -n "$NAMESPACE" \
+        -o jsonpath='{.status.containerStatuses[?(@.name=="netbox")].ready}' 2>/dev/null || true)
+    if [[ "$WEB_READY" == "true" ]]; then
         NETBOX_READY=true
         break
     fi
