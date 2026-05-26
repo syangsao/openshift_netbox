@@ -4,17 +4,34 @@ Apply the YAML manifests with `oc` to create all NetBox resources on OpenShift.
 
 ## Prerequisites
 
+
 - OpenShift cluster with `oc` CLI configured and logged in
 - NetBox image available in your registry (see [build-from-source.md](build-from-source.md) or [community-image.md](community-image.md))
-- NFS CSI driver with storage class `nfs-csidriver3`
 
-## Step 1: Create Namespace
+## Step 1: Choose a Storage Class (Optional)
+
+All PVCs (PostgreSQL, Redis sessions, Redis cache) use the cluster's **default storage class** by default. To use a specific storage class, uncomment and edit the `storageClassName` in the relevant manifest(s) before applying.
+
+**PostgreSQL** — `manifests/postgres.yaml`:
+```yaml
+#  storageClassName: nfs-csidriver3    # Uncomment to use a specific storage class
+```
+
+**Redis** — `manifests/redis.yaml` and `manifests/redis-cache.yaml` — add `storageClassName` under `spec:` in each PVC if needed.
+
+To check your cluster's default storage class:
+```bash
+oc get sc
+```
+The one marked `(default)` is what the PVCs will use.
+
+## Step 2: Create Namespace
 
 ```bash
 oc create namespace netbox --dry-run=client -o yaml | oc apply -f -
 ```
 
-## Step 2: Generate Credentials
+## Step 3: Generate Credentials
 
 Manually edit `manifests/netbox-env.yaml` replacing all `CHANGE-ME-*` placeholders:
 
@@ -28,7 +45,7 @@ SUPERUSER_PASSWORD: <CHANGE-ME-admin-password>
 
 > **Note:** All values must be base64-encoded in the Secret manifest.
 
-## Step 3: Create Image Pull Secret
+## Step 4: Create Image Pull Secret
 
 ```bash
 oc create secret docker-registry netbox-image-pull-secret \
@@ -44,7 +61,7 @@ Or apply the pre-built manifest:
 oc apply -f manifests/netbox-image-pull-secret.yaml
 ```
 
-## Step 4: Apply Manifests
+## Step 5: Apply Manifests
 
 Apply in dependency order:
 
@@ -65,7 +82,7 @@ oc apply -f manifests/netbox.yaml
 oc apply -f manifests/route.yaml
 ```
 
-## Step 5: Wait for Readiness
+## Step 6: Wait for Readiness
 
 ```bash
 # PostgreSQL
@@ -81,7 +98,7 @@ oc wait --for=condition=ready pod -l app=netbox-redis-cache -n netbox --timeout=
 oc wait --for=condition=ready pod -l app=netbox -n netbox --timeout=300s
 ```
 
-## Step 6: Verify
+## Step 7: Verify
 
 ```bash
 # Check all pods
@@ -108,16 +125,16 @@ netbox-redis-cache-xxxxx-xxxxx 1/1    Running   0          5m
 
 ### PostgreSQL (`postgres.yaml`)
 
-- PostgreSQL 15 with persistent storage via PVC
-- Storage class: `nfs-csidriver3`
-- Data directory: `/var/lib/postgresql/data` (no subPath)
+- PostgreSQL 18 with persistent storage via PVC (10Gi)
+- Storage class: cluster default (override by uncommenting `storageClassName` in the PVC)
+- Data directory: `/var/lib/postgresql` (no subPath)
 - Environment: `POSTGRES_DB=netbox`, `POSTGRES_USER=netbox`, `POSTGRES_PASSWORD` from secret
 
 ### Redis (`redis.yaml`, `redis-cache.yaml`)
 
-- Redis 7 for sessions and cache (separate pods)
+- Valkey 9 for sessions and cache (separate pods)
 - Password protected via secret
-- No persistent storage needed
+- Redis sessions (5Gi PVC), Redis cache (5Gi PVC) — both use cluster default storage class
 
 ### NetBox (`netbox.yaml`)
 
@@ -190,10 +207,10 @@ Common causes:
 
 ```bash
 # Check PVC events
-oc describe pvc postgres-pvc -n netbox
+oc describe pvc netbox-postgres-pvc -n netbox
 
 # Force delete stuck PVC
-oc delete pvc postgres-pvc -n netbox --force --grace-period=0
+oc delete pvc netbox-postgres-pvc -n netbox --force --grace-period=0
 ```
 
 ### NetBox Worker Sidecar Failing
