@@ -825,6 +825,7 @@ NETBOX_READY=false
 ELAPSED=0
 INTERVAL=10
 MAX_WAIT=600
+PREV_LINE=""
 
 while [[ $ELAPSED -lt $MAX_WAIT ]]; do
     # Find the current netbox pod
